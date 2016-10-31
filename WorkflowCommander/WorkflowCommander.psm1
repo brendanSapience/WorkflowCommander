@@ -345,7 +345,7 @@ function Export-aeObject {
       Write-Debug -Message $_.Exception
       
       if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name $name -type 'UNDEF' -path '-' 
+        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
       }
         
       continue
@@ -356,10 +356,10 @@ function Export-aeObject {
       Write-Warning -Message ('! File ' + $outputFilename + ' has not been written. Export failed. AE says: ' + $aeResponse)
         
       if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name $name -type 'UNDEF' -path '-' 
+        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
       }
         
-      continue
+      return
     }
 
     $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
