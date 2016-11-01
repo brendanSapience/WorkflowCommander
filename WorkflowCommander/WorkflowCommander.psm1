@@ -84,18 +84,7 @@ function Search-aeObject {
     [string]$path       = $null,
     [Parameter(ValueFromPipelineByPropertyName)]
     [Alias('type')]
-    [ValidateSet('JOBS',
-        'JOBP','CALE','CALL','CITC',
-        'CLNT','CODE','CONN','CPIT',
-        'DASH','DOCU','EVNT','FILTER',
-        'FOLD','HOST','HOSTG','HSTA',
-        'JOBF','JOBG','JOBI','JOBQ',
-        'JSCH','LOGIN','PERIOD','PRPT',
-        'QUEUE','SCRI','SERV','STORE',
-        'SYNC','TZ','USER','USERG',
-        'VARA','XSL', 'Executeable'
-    )]
-    [string[]]$objType  = $null,
+    [WFCSearchObjTypes[]]$objType  = $null,
     [string]$text       = $null,
     [ValidateSet('archive','process','title','documentation','varakey','varavalue','varaall')]  
     [string[]]$textType = $null,
@@ -140,7 +129,7 @@ function Search-aeObject {
     }
   
     ###################
-    # Date filter
+    # Date filter, if any.
     ###################
     if ($dateSearch -ne 'noContraint') {
       $fromDateTimeFilter = [com.uc4.api.Datetime]::new($fromDateTime.ToString('yyyy-MM-dd HH:mm:ss'))
@@ -214,14 +203,14 @@ function Search-aeObject {
     ###################
     # Start search and gather results
     ###################
-    $aeConnection.sendRequest($search)
-
-    # TODO: rare-case bug that result is not returned correctly
-    Write-Verbose -Message ("* Found " + $search.size() + " results.")
-    $msg = $search.getMessageBox()
-    if ($msg) {
-      write-warning -message $msg
+    try {
+      $aeConnection.sendRequest($search)
     }
+    catch {
+      throw('! Failed to query the AE: ' + $_.Exception.Message)
+    }
+    
+    Write-Verbose -Message ('* Found ' + $search.size() + ' results.')
     
     [java.util.Iterator]$iterator = $search.resultIterator()
     for ($result = 0; $result -lt $search.size(); $result++) {
@@ -231,15 +220,11 @@ function Search-aeObject {
       $subResultSet += $item
     }
 
-  
     # This feature can be very handy if comparing a list of objects (i.E. coming from a text file) with what is actually available on a system.
     # Of course it could be misleading as well - i.E. if the namefilter is set to "*" and the datefilter says all created objects of today. That
     # Would result in a result with objectname "*" with no further information, but this should not be the common use-case for using this switch.
     if ($showNoResult -and $subResultSet.length -eq 0) {
-      $emptyResult = New-Object -TypeName PSObject
-      $emptyResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEEmptySearchResult')
-      Add-Member -InputObject $emptyResult -NotePropertyMembers @{'Name' = $name; 'Type' = 'UNDEF' }      
-      $subResultSet += $emptyResult
+      $subResultSet += (_new-aeEmptySearchResult -name "$name")
     }
     
     $resultSet += $subResultSet
@@ -296,9 +281,7 @@ function Export-aeObject {
     [switch]$showNoExports,
     [Parameter(Mandatory,HelpMessage='File or directory to export the object to.')]
     [Alias('directory')]
-    [IO.FileInfo]$file,
-    [Parameter(DontShow,ValueFromPipelineByPropertyName)]
-    [String]$type
+    [IO.FileInfo]$file
   )
   
   begin {
@@ -310,14 +293,26 @@ function Export-aeObject {
     # As export-aeobject is often fed by search-aeobject output, it might be that there was no result. So we should only set the
     # starttime if we really at least received one pipe entry.
     if (! $startExportDateTime) {
-        $startExportDateTime = [datetime]::Now
+      $startExportDateTime = [datetime]::Now
     }
   
-    # Type is a hidden parameter that might be inputted by search-aeObject. This parameter prevents unnecessary errors due to tries
-    # of exporting FOLD or USER objects. Important: it still tries to export UNDEF! This is because you might search on AE1 for objects
-    # that are missing and then export them from AE2 where those export might exist.
-    if ($type -eq "FOLD" -or $type -eq "USER") {
-      Write-Verbose -Message ("* " + $name + " not exported because it is of type " + $type)
+    # Before we export we need to identify whether the object exists and whether the type is exporteable
+    $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name" -showNoResult
+  
+    # There are limitations when it comes to 
+    if ($objectInfo.type -eq 'FOLD' -or $objectInfo.type -eq 'USER') {
+      Write-Verbose -Message ('* ' + $name + ' not exported because it is of type ' + $objectInfo.type)
+      if ($showNoExports) {
+        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
+      }
+      return
+    }
+    
+    if ($objectInfo.type -eq 'UNDEF') {
+      Write-Verbose -Message ('* ' + $name + ' not exported because it does not exist on this connection.')
+      if ($showNoExports) {
+        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
+      }
       return
     }
 
@@ -338,37 +333,16 @@ function Export-aeObject {
     try {  
       $aeExportRequest = [com.uc4.communication.requests.ExportObject]::new($name, [java.io.file]::new($outputFilename))
       $aeConnection.sendRequest($aeExportRequest)
-      $aeResponse = $aeExportRequest.getMessageBox()
     }
     catch {
-      write-warning -Message ('! AE export failure for ' + $name + '. This happens for USER objects or objects that are in general not exporteable.')
-      Write-Debug -Message $_.Exception
-      
-      if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
-      }
-        
-      continue
+      throw('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $_.Exception.Message)
     }
-      
-    # Check if the expected output file has been written. If not (which is the case when an inexisting object export was tried), report warning.
-    if (! (Get-ChildItem -path $outputFilename -ErrorAction SilentlyContinue) -or $aeResponse) {
-      Write-Warning -Message ('! File ' + $outputFilename + ' has not been written. Export failed. AE says: ' + $aeResponse)
-        
-      if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
-      }
-        
-      return
-    }
-
-    $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
-    $path = $objectInfo.path
         
     # We can encode the (folder-)path where the object has been exported from in case that the export has not been done from a V11+ system.
     # This information is encoded in the uc-name element.
     [xml]$xmlObjectInfo = get-content -path $outputFilename
     $attribute = $xmlObjectInfo.CreateAttribute('WorkflowCommander','aeObjectPath','devnull')
+    $path = $objectInfo.path
     $attribute.value = $path
     $null = $xmlObjectInfo.'uc-export'.SetAttributeNode($attribute)
     $xmlObjectInfo.OuterXml | Out-File -Encoding ASCII -FilePath $outputFilename
@@ -481,7 +455,7 @@ function Import-aeObject {
           $identifiedPath = (select-xml -xml $xmlData -XPath '//*[@WorkflowCommander:aeObjectPath]' -Namespace @{ 'WorkflowCommander' = 'devnull' }).Node.aeObjectPath
         }
         catch {
-          throw ('! Severe issue. XML not valid!')
+          throw('! Severe issue during loading of ' + $xmlFile + ': ' + $_.Exception.Message)
         }
       }
       else {
@@ -573,8 +547,14 @@ function New-aeFolder  {
     [string[]]$path
   )
 
-    $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+  $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+
+  try {
     $aeConnection.sendRequest($folderBrowser)
+  }
+  catch {
+    throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
+  }
   
     # Remove leading and ending slash for appropriate foreach loop
     $path = $path -replace '^/', '' -replace '/$', ''

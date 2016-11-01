@@ -42,3 +42,15 @@ function _new-aeObjectExportObject {
     
   return $Object
 }
+
+function _new-aeEmptySearchResult {
+  param(
+    [Parameter(Mandatory,HelpMessage='AE object name')]
+    [string]$name
+  )
+  
+  $emptyResult = New-Object -TypeName PSObject
+  $emptyResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEEmptySearchResult')
+  Add-Member -InputObject $emptyResult -NotePropertyMembers @{'Name' = $name; 'Type' = 'UNDEF' }
+  return $emptyResult  
+}
