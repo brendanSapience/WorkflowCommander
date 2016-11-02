@@ -86,12 +86,13 @@ function _new-aeImportResult {
   )
   
   $importResult = New-Object -TypeName PSObject
-  $importResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEImportResult')
+  $importResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEObjectImport')
   Add-Member -InputObject $importResult -NotePropertyMembers @{
     'Name' = $name; 
     'Type' = $type; 
     'Path' = $path; 
-    'File' = $file 
+    'File' = $file;
+    'Result' = $result;
   }
   return $importResult  
 }

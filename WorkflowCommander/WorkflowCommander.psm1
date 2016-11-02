@@ -219,7 +219,7 @@ function Search-aeObject {
       }
       catch {
         Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
-        $subResultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCFAILURE)
+        $resultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCFAILURE)
         return
       }
     
@@ -466,7 +466,7 @@ function Import-aeObject {
 
           # Get name, type and aeObjectPath
           $identifiedType = $xmlData.'uc-export'.FirstChild.LocalName
-          $identifiedName = (select-xml -xml $xmlData -xpath '/uc-export/*/@name').Node.Name
+          $identifiedName = (select-xml -xml $xmlData -xpath '/uc-export/*/@name').Node.'#text'
           $identifiedPath = (select-xml -xml $xmlData -XPath '//*[@WorkflowCommander:aeObjectPath]' -Namespace @{ 'WorkflowCommander' = 'devnull' }).Node.aeObjectPath
         }
         catch {
@@ -475,7 +475,7 @@ function Import-aeObject {
         }
 
       if (! $identifiedPath) {       
-        Write-Debug -Message ('Object will be imported to parametrized destination folder ' + $path)
+        Write-Debug -Message ('** Object will be imported to parametrized destination folder ' + $path)
         $identifiedPath = $path
       }
       
@@ -507,18 +507,18 @@ function Import-aeObject {
         }
       }
       catch {
-        $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCFAILURE
+        $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCFAILURE
         Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $aeMsg)
+        return
       }
-      finally {
+
         if ($aeMsg -match 'U04005758') {
           Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
-          $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCEMPTY
+          $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCEMPTY
         }
         else {
-          $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCEMPTY
+          $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCOK
         }
-      }
     }
   }
       
