@@ -18,6 +18,11 @@
 
 $VerbosePreference = 'Continue'
 
+# Default values for failure / empty / OK result
+$WFCFAILURE = 'FAIL'
+$WFCEMPTY   = 'EMPTY'
+$WFCOK      = 'OK'
+
 #########################################################################################
 # Published functions
 #########################################################################################
@@ -60,10 +65,6 @@ function Search-aeObject {
       .PARAMETER toDateTime
       To date / time. Input as [datetime] or 'YYYY-MM-DD HH:MM:SS'
 
-      .PARAMETER showNoResult
-      This parameter returns an object with empty fields in case that the search did not return any result. This
-      is very useful when searching on expected objectnames.
-
       .EXAMPLE
       search-aeObject -ae $ae -name "*JOB*" -path "/PRODUCTION" -objType JOBS
       Searches for objects that name matches "*JOB*" and are stored below /PRODUCTION and are of type JOBS.
@@ -84,7 +85,18 @@ function Search-aeObject {
     [string]$path       = $null,
     [Parameter(ValueFromPipelineByPropertyName)]
     [Alias('type')]
-    [WFCSearchObjTypes[]]$objType  = $null,
+    [ValidateSet('JOBS',
+        'JOBP','CALE','CALL','CITC',
+        'CLNT','CODE','CONN','CPIT',
+        'DASH','DOCU','EVNT','FILTER',
+        'FOLD','HOST','HOSTG','HSTA',
+        'JOBF','JOBG','JOBI','JOBQ',
+        'JSCH','LOGIN','PERIOD','PRPT',
+        'QUEUE','SCRI','SERV','STORE',
+        'SYNC','TZ','USER','USERG',
+        'VARA','XSL','Executeable'
+    )]
+    [string[]]$objType  = $null,
     [string]$text       = $null,
     [ValidateSet('archive','process','title','documentation','varakey','varavalue','varaall')]  
     [string[]]$textType = $null,
@@ -93,7 +105,6 @@ function Search-aeObject {
     [string]$dateSearch = 'noConstraint',
     [datetime]$fromDateTime = [DateTime]::Today,
     [datetime]$toDateTime = [datetime]::Now,
-    [switch]$showNoResult,
     [switch]$searchForUsage
   )
 
@@ -200,31 +211,38 @@ function Search-aeObject {
     }
     $search.setSearchLocation(([string]$aeConnection.client + $path), (! $NonRecursiveSearch))
 
-    ###################
-    # Start search and gather results
-    ###################
+      ###################
+      # Start search and gather results
+      ###################
+      try {
+        $aeConnection.sendRequest($search)
+      }
+      catch {
+        Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
+        $subResultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCFAILURE)
+        return
+      }
+    
+      Write-Verbose -Message ('* Found ' + $search.size() + ' results. ' + $search.getMessageBox())
+
     try {
-      $aeConnection.sendRequest($search)
+      [java.util.Iterator]$iterator = $search.resultIterator()
+      for ($result = 0; $result -lt $search.size(); $result++) {
+        # The top level folder of the object equals to the client number. We don't want this to not confuse import-aeObject or other
+        # functions. Instead we encode the source client information in an extra "client" field.
+        [com.uc4.api.SearchResultItem]$item = $iterator.next()
+        $subResultSet += $item
+      }
     }
     catch {
-      throw('! Failed to query the AE: ' + $_.Exception.Message)
+      Write-Warning -Message "! Issue with gathering result items."
     }
     
-    Write-Verbose -Message ('* Found ' + $search.size() + ' results.')
-    
-    [java.util.Iterator]$iterator = $search.resultIterator()
-    for ($result = 0; $result -lt $search.size(); $result++) {
-      # The top level folder of the object equals to the client number. We don't want this to not confuse import-aeObject or other
-      # functions. Instead we encode the source client information in an extra "client" field.
-      [com.uc4.api.SearchResultItem]$item = $iterator.next()
-      $subResultSet += $item
-    }
-
     # This feature can be very handy if comparing a list of objects (i.E. coming from a text file) with what is actually available on a system.
     # Of course it could be misleading as well - i.E. if the namefilter is set to "*" and the datefilter says all created objects of today. That
     # Would result in a result with objectname "*" with no further information, but this should not be the common use-case for using this switch.
-    if ($showNoResult -and $subResultSet.length -eq 0) {
-      $subResultSet += (_new-aeEmptySearchResult -name "$name")
+    if ($subResultSet.length -eq 0) {
+      $subResultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCEMPTY)
     }
     
     $resultSet += $subResultSet
@@ -232,7 +250,7 @@ function Search-aeObject {
   
   end {
     Write-Debug -Message '** Search-aeObject end'
-    return $resultSet
+    return ($resultSet | Sort-Object -property Path)
   }
 }
 
@@ -252,9 +270,6 @@ function Export-aeObject {
 
       .PARAMETER name
       Name of the AE object to export.
-
-      .PARAMETER showNoExports
-      Failed exports will show up in result.
 
       .PARAMETER file
       Filename or directory name to where the object should be exported. If a directory is specified, the XML file will be named like the object.
@@ -278,7 +293,6 @@ function Export-aeObject {
     [WFC.Core.WFCConnection]$aeConnection,
     [Parameter(ValueFromPipeline,HelpMessage='Name of object to export.',ValueFromPipelineByPropertyName,Mandatory)]
     [string[]]$name,
-    [switch]$showNoExports,
     [Parameter(Mandatory,HelpMessage='File or directory to export the object to.')]
     [Alias('directory')]
     [IO.FileInfo]$file
@@ -297,22 +311,12 @@ function Export-aeObject {
     }
   
     # Before we export we need to identify whether the object exists and whether the type is exporteable
-    $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name" -showNoResult
+    $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
   
     # There are limitations when it comes to 
-    if ($objectInfo.type -eq 'FOLD' -or $objectInfo.type -eq 'USER') {
-      Write-Verbose -Message ('* ' + $name + ' not exported because it is of type ' + $objectInfo.type)
-      if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
-      }
-      return
-    }
-    
-    if ($objectInfo.type -eq 'UNDEF') {
-      Write-Verbose -Message ('* ' + $name + ' not exported because it does not exist on this connection.')
-      if ($showNoExports) {
-        $resultSet += _new-aeObjectExportObject -name "$name" -type 'UNDEF' -path '-' 
-      }
+    if ($objectInfo.type -eq 'USER' -or $objectInfo.type -eq 'FOLD' -or $objectInfo.result -eq 'UNDEF' -or $objectinfo.result -eq 'EMPTY') {
+      Write-Verbose -Message ('* ' + $name + ' not exported.')
+      $resultSet += _new-aeObjectExportObject -name "$name" -type $objectInfo.type -result $WFCEMPTY 
       return
     }
 
@@ -335,9 +339,18 @@ function Export-aeObject {
       $aeConnection.sendRequest($aeExportRequest)
     }
     catch {
-      throw('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $_.Exception.Message)
+      Write-Warning -Message ('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $_.Exception.Message)
+      $resultSet += _new-aeObjectExportObject -name "$name" -type $objectInfo.type -result $WFCFAILURE
+      return
     }
-        
+    
+    # The above often returns no error in case that invalid objects have been exported.
+    $msg = $aeExportRequest.getMessageBox()
+    if($msg) {
+      Write-Warning -Message ('! AE export failure for ' + $name + ': ' + $msg)
+      $resultSet += _new-aeObjectExportObject -name "$name" -type $objectInfo.type -result $WFCFAILURE
+      return
+    }      
     # We can encode the (folder-)path where the object has been exported from in case that the export has not been done from a V11+ system.
     # This information is encoded in the uc-name element.
     [xml]$xmlObjectInfo = get-content -path $outputFilename
@@ -353,7 +366,7 @@ function Export-aeObject {
     }
 
     # Finally return the information on the exported object      
-    $resultSet += _new-aeObjectExportObject -name "$name" -type $objectInfo.type -path "$path" -file $outputFilename      
+    $resultSet += _new-aeObjectExportObject -name "$name" -type $objectInfo.type -path "$path" -file $outputFilename -result $WFCOK 
     Write-Verbose -Message ('* Object ' + $name + ' has been exported successfully.')
   }
   
@@ -416,7 +429,7 @@ function Import-aeObject {
 
   begin {
     $startImportDateTime = $null
-    $importCount = 0
+    $resultSet = @()
   }
 
   process {
@@ -424,9 +437,9 @@ function Import-aeObject {
       $startImportDateTime = [datetime]::Now
     }
   
-    # This might happen if we pipe from a export-aeObject with the -showNoExport option
+    # This might happen if we pipe from a export-aeObject without getting rid of EMPTY results
     if (! $file) {
-      Write-Debug -Message 'Skipping import as no file is defined.'
+      Write-Debug -Message '** Skipping import as no file is defined.'
       return
     }
   
@@ -438,6 +451,7 @@ function Import-aeObject {
     
     if ($file.Length -eq 0) {
       Write-Warning -Message '! No XML files to import.'
+      return
     }
     
     foreach ($xmlFile in $file) {
@@ -445,35 +459,39 @@ function Import-aeObject {
       # The path defines, in what folder structure the object should be stored into. This information can be inputted with 3 methods:
       # 1. as -path parameter to import-aeObject
       # 2. encoded into the XML object as WorkflowCommander:aeObjectPath attribute to uc-name XML element
-      if (! $path) {
         try {
           # If the parameter has not been specified, we must load the XML file
-          Write-Debug -Message ('Reading AE path information from ' + $xmlFile)
+          Write-Debug -Message ('Reading base information from ' + $xmlFile)
           [xml]$xmlData = get-content -Path $xmlFile
-        
-          # Check the xPath for the WorkflowCommander:aeObjectPath attribute
+
+          # Get name, type and aeObjectPath
+          $identifiedType = $xmlData.'uc-export'.FirstChild.LocalName
+          $identifiedName = (select-xml -xml $xmlData -xpath '/uc-export/*/@name').Node.Name
           $identifiedPath = (select-xml -xml $xmlData -XPath '//*[@WorkflowCommander:aeObjectPath]' -Namespace @{ 'WorkflowCommander' = 'devnull' }).Node.aeObjectPath
         }
         catch {
-          throw('! Severe issue during loading of ' + $xmlFile + ': ' + $_.Exception.Message)
+          Write-Warning -Message ('! Issues loading XML file ' + $xmlFile + ' to extract AE folder destination. Unsafe import will be skipped.')
+          $resultSet += _new-aeImportResult -name '-' -file $xmlFile -result $WFCFAILURE
         }
-      }
-      else {
+
+      if (! $identifiedPath) {       
         Write-Debug -Message ('Object will be imported to parametrized destination folder ' + $path)
         $identifiedPath = $path
       }
-
-      # If identifiedPath is still empty, we can not safely import the object.
+      
+      # If identifiedPath is empty, we can not safely import the object.
       if (! $identifiedPath) {
-        throw ('! Path for object import of ' + $xmlFile.fullname + ' could not be identified.')
+        $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCFAILURE
+        Write-Warning -Message ('! AE path for object import of ' + $xmlFile.fullname + ' could not be identified.')
+        return
       }
 
-      Write-Verbose -Message ('** Importing ' + $xmlFile.fullname + ' to ' + $identifiedPath)
+      Write-Verbose -Message ('* Importing ' + $xmlFile.fullname + ' to ' + $identifiedPath)
 
       try {
         # Make sure the destination folder path exists. This will create the necessary subfolder structure and return the iFolder
         # destination object.
-        Write-Debug -Message ('Making sure that destination path exists: ' + $identifiedPath)
+        Write-Debug -Message ('** Making sure that destination path exists: ' + $identifiedPath)
         $targetFolder = new-aeFolder -aeConnection $aeConnection -path $identifiedPath
 
         if ($pscmdlet.ShouldProcess('Import ' + $xmlFile.fullname + ' to ' + $identifiedPath) ) {
@@ -489,14 +507,16 @@ function Import-aeObject {
         }
       }
       catch {
+        $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCFAILURE
         Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $aeMsg)
       }
       finally {
         if ($aeMsg -match 'U04005758') {
           Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
+          $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCEMPTY
         }
         else {
-          $importCount++
+          $resultSet += _new-aeImportResult -name $identifiedName -file $xmlFile -type $identifiedType -result $WFCEMPTY
         }
       }
     }
@@ -504,13 +524,13 @@ function Import-aeObject {
       
   end {
     if ($startImportDateTime) {
-      Write-Verbose -Message ('* Imported ' + $importCount + ' objects. Duration: ' + ([datetime]::Now - $startImportDateTime).toString())
+      Write-Verbose -Message ('* Imported ' + $resultSet.length + ' objects. Duration: ' + ([datetime]::Now - $startImportDateTime).toString())
     }
     else {
       Write-Warning -Message ('! Nothing imported as file/directory was not existing or empty.')
     }
 
-    return $importCount
+    return $resultSet
   }
 }
 
@@ -546,7 +566,8 @@ function New-aeFolder  {
     [Parameter(Mandatory,HelpMessage='Path to create on AE server.')]
     [string[]]$path
   )
-
+ 
+  # TODO: replace logic with get-aeFolder
   $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
 
   try {
@@ -556,34 +577,34 @@ function New-aeFolder  {
     throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
   }
   
-    # Remove leading and ending slash for appropriate foreach loop
-    $path = $path -replace '^/', '' -replace '/$', ''
-    $absPath = '/'
+  # Remove leading and ending slash for appropriate foreach loop
+  $path = $path -replace '^/', '' -replace '/$', ''
+  $absPath = '/'
   
-    foreach ($subFolder in $path.split('/')) {
-      $folderName = ($absPath + $subFolder)
-      if (! $folderBrowser.getFolder($folderName)) {
-        write-verbose -Message ('* Creating folder structure ' + $folderName)
-        try {
-          if ($PSCmdlet.ShouldProcess('Folder ' + $folderName + ' does not exist and must be created.')) {
-            $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
-              [com.uc4.api.UC4ObjectName]::new($subFolder), 
-              [com.uc4.api.Template]::FOLD, 
-              $folderBrowser.getFolder($absPath)
-            )
-            $aeConnection.sendRequest($createFolderRequest)
+  foreach ($subFolder in $path.split('/')) {
+    $folderName = ($absPath + $subFolder)
+    if (! $folderBrowser.getFolder($folderName)) {
+      write-verbose -Message ('* Creating folder structure ' + $folderName)
+      try {
+        if ($PSCmdlet.ShouldProcess('Folder ' + $folderName + ' does not exist and must be created.')) {
+          $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
+            [com.uc4.api.UC4ObjectName]::new($subFolder), 
+            [com.uc4.api.Template]::FOLD, 
+            $folderBrowser.getFolder($absPath)
+          )
+          $aeConnection.sendRequest($createFolderRequest)
       
-            # Reload folderBrowser
-            $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
-            $aeConnection.sendRequest($folderBrowser)
-          }
-        }
-        catch {
-          throw ('! Issue creating folder.')
+          # Reload folderBrowser
+          $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+          $aeConnection.sendRequest($folderBrowser)
         }
       }
-      $absPath = ($absPath + $subFolder + '/')
+      catch {
+        throw ('! Issue creating folder.')
+      }
     }
+    $absPath = ($absPath + $subFolder + '/')
+  }
   return $folderBrowser.getFolder($absPath)
 }
 

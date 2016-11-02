@@ -20,14 +20,18 @@ $VerbosePreference = 'Continue'
 #########################################################################################
 # Internal functions
 #########################################################################################
+
+# Returned after an object export request. This object type is also used for -showNoExport
 function _new-aeObjectExportObject {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
     [string]$type,
-    [Parameter(Mandatory,HelpMessage='XML filename of exported AE object')]
     [string]$path,
-    [IO.FileInfo]$file = $null
+    [IO.FileInfo]$file = $null,
+    [ValidateSet('OK','EMPTY','FAIL')]
+    [Parameter(Mandatory,HelpMessage='Result')]
+    [string]$result
   )
 
   $Object = New-Object -TypeName PSObject
@@ -37,20 +41,57 @@ function _new-aeObjectExportObject {
     'Name' = $name;
     'Type' = $type;
     'Path' = $path;
-    'File' = $file
+    'File' = $file;
+    'Result' = $result;
   }
     
   return $Object
 }
 
+# As we cannot create an empty com.uc4.api.SearchResultItem we create an own type.
 function _new-aeEmptySearchResult {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
-    [string]$name
+    [string]$name,
+    [ValidateSet('EMPTY','FAIL')]
+    [Parameter(Mandatory,HelpMessage='Result')]
+    [string]$result
   )
   
   $emptyResult = New-Object -TypeName PSObject
   $emptyResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEEmptySearchResult')
-  Add-Member -InputObject $emptyResult -NotePropertyMembers @{'Name' = $name; 'Type' = 'UNDEF' }
+  Add-Member -InputObject $emptyResult -NotePropertyMembers @{
+    'Name' = $name; 
+    'Type' = '';
+    'Path' = '';
+    'Title' = '';
+    'Result' = $result 
+  }
   return $emptyResult  
+}
+
+# To identify whether an import was successful or not, we return all imported objects. This type can also be
+# used to identify a failed import with an UNDEF type.
+function _new-aeImportResult {
+  param(
+    [Parameter(Mandatory,HelpMessage='AE object name')]
+    [string]$name,
+    [string]$type,
+    [string]$path,
+    [Parameter(Mandatory,HelpMessage='File to import XML.')]
+    [string]$file,
+    [ValidateSet('OK','EMPTY','FAIL')]
+    [Parameter(Mandatory,HelpMessage='Result')]
+    [string]$result
+  )
+  
+  $importResult = New-Object -TypeName PSObject
+  $importResult.PsObject.TypeNames.Insert(0, 'WFC.PS.AEImportResult')
+  Add-Member -InputObject $importResult -NotePropertyMembers @{
+    'Name' = $name; 
+    'Type' = $type; 
+    'Path' = $path; 
+    'File' = $file 
+  }
+  return $importResult  
 }
