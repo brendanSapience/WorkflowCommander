@@ -48,6 +48,27 @@ function _new-aeObjectExportObject {
   return $Object
 }
 
+# For empty com.uc4.api.StatisticSearchItem
+function _new-aeEmptyStatisticResult {
+  param(
+    [Parameter(Mandatory,HelpMessage='AE object name')]
+    [string]$name,
+    [ValidateSet('OK','EMPTY','FAIL')]
+    [Parameter(Mandatory,HelpMessage='Result')]
+    [string]$result
+  )
+
+  $Object = New-Object -TypeName PSObject
+  $Object.PsObject.TypeNames.Insert(0, 'WFC.PS.AEStatisticItem')
+  
+  Add-Member -InputObject $Object -NotePropertyMembers @{
+    'Name' = $name;
+    'Result' = $result;
+  }
+    
+  return $Object
+}
+
 # As we cannot create an empty com.uc4.api.SearchResultItem we create an own type.
 function _new-aeEmptySearchResult {
   param(

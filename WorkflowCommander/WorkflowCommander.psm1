@@ -109,8 +109,8 @@ function Search-aeObject {
   )
 
   begin {
-    $resultSet = @()
     Write-Debug -Message '** Search-aeObject start'
+    $resultSet = @()
   }
   
   process {
@@ -211,19 +211,19 @@ function Search-aeObject {
     }
     $search.setSearchLocation(([string]$aeConnection.client + $path), (! $NonRecursiveSearch))
 
-      ###################
-      # Start search and gather results
-      ###################
-      try {
-        $aeConnection.sendRequest($search)
-      }
-      catch {
-        Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
-        $resultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCFAILURE)
-        return
-      }
+    ###################
+    # Start search and gather results
+    ###################
+    try {
+      $aeConnection.sendRequest($search)
+    }
+    catch {
+      Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
+      $resultSet += (_new-aeEmptySearchResult -name "$name" -result $WFCFAILURE)
+      return
+    }
     
-      Write-Verbose -Message ('* Found ' + $search.size() + ' results. ' + $search.getMessageBox())
+    Write-Verbose -Message ('* Found ' + $search.size() + ' results. ' + $search.getMessageBox())
 
     try {
       [java.util.Iterator]$iterator = $search.resultIterator()
@@ -299,8 +299,9 @@ function Export-aeObject {
   )
   
   begin {
+    Write-Debug -Message '** Export-aeObject start'
     $resultSet = @()
-    $startExportDateTime = ""
+    $startExportDateTime = ''
   }
   
   process {
@@ -378,7 +379,9 @@ function Export-aeObject {
       Write-Warning -Message ('! Nothing exported. Likely that the input was null (like empty search-aeObject).')
     }
     
-    return $resultSet
+    Write-Debug -Message '** Export-aeObject end'
+    
+    return ($resultSet | Sort-Object -Property Name)
   }
 }
 
@@ -428,8 +431,9 @@ function Import-aeObject {
   )
 
   begin {
-    $startImportDateTime = $null
+    Write-Debug -Message '** Import-aeObject start'
     $resultSet = @()
+    $startImportDateTime = $null
   }
 
   process {
@@ -459,20 +463,20 @@ function Import-aeObject {
       # The path defines, in what folder structure the object should be stored into. This information can be inputted with 3 methods:
       # 1. as -path parameter to import-aeObject
       # 2. encoded into the XML object as WorkflowCommander:aeObjectPath attribute to uc-name XML element
-        try {
-          # If the parameter has not been specified, we must load the XML file
-          Write-Debug -Message ('Reading base information from ' + $xmlFile)
-          [xml]$xmlData = get-content -Path $xmlFile
+      try {
+        # If the parameter has not been specified, we must load the XML file
+        Write-Debug -Message ('Reading base information from ' + $xmlFile)
+        [xml]$xmlData = get-content -Path $xmlFile
 
-          # Get name, type and aeObjectPath
-          $identifiedType = $xmlData.'uc-export'.FirstChild.LocalName
-          $identifiedName = (select-xml -xml $xmlData -xpath '/uc-export/*/@name').Node.'#text'
-          $identifiedPath = (select-xml -xml $xmlData -XPath '//*[@WorkflowCommander:aeObjectPath]' -Namespace @{ 'WorkflowCommander' = 'devnull' }).Node.aeObjectPath
-        }
-        catch {
-          Write-Warning -Message ('! Issues loading XML file ' + $xmlFile + ' to extract AE folder destination. Unsafe import will be skipped.')
-          $resultSet += _new-aeImportResult -name '-' -file $xmlFile -result $WFCFAILURE
-        }
+        # Get name, type and aeObjectPath
+        $identifiedType = $xmlData.'uc-export'.FirstChild.LocalName
+        $identifiedName = (select-xml -xml $xmlData -xpath '/uc-export/*/@name').Node.'#text'
+        $identifiedPath = (select-xml -xml $xmlData -XPath '//*[@WorkflowCommander:aeObjectPath]' -Namespace @{ 'WorkflowCommander' = 'devnull' }).Node.aeObjectPath
+      }
+      catch {
+        Write-Warning -Message ('! Issues loading XML file ' + $xmlFile + ' to extract AE folder destination. Unsafe import will be skipped.')
+        $resultSet += _new-aeImportResult -name '-' -file $xmlFile -result $WFCFAILURE
+      }
 
       if (! $identifiedPath) {       
         Write-Debug -Message ('** Object will be imported to parametrized destination folder ' + $path)
@@ -512,13 +516,13 @@ function Import-aeObject {
         return
       }
 
-        if ($aeMsg -match 'U04005758') {
-          Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
-          $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCEMPTY
-        }
-        else {
-          $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCOK
-        }
+      if ($aeMsg -match 'U04005758') {
+        Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
+        $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCEMPTY
+      }
+      else {
+        $resultSet += _new-aeImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCOK
+      }
     }
   }
       
@@ -530,7 +534,8 @@ function Import-aeObject {
       Write-Warning -Message ('! Nothing imported as file/directory was not existing or empty.')
     }
 
-    return $resultSet
+    Write-Debug -Message '** Import-aeObject end'
+    return ($resultSet | Sort-Object -Property Name)
   }
 }
 
@@ -567,70 +572,135 @@ function New-aeFolder  {
     [string[]]$path
   )
  
-  # TODO: replace logic with get-aeFolder
-  $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+  begin {
+    Write-Debug -Message '** new-aeFolder start'
+    $resultSet = @()
+  }
 
-  try {
-    $aeConnection.sendRequest($folderBrowser)
-  }
-  catch {
-    throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
-  }
+  process { 
+    # TODO: replace logic with get-aeFolder
+    $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+
+    try {
+      $aeConnection.sendRequest($folderBrowser)
+    }
+    catch {
+      throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
+    }
   
-  # Remove leading and ending slash for appropriate foreach loop
-  $path = $path -replace '^/', '' -replace '/$', ''
-  $absPath = '/'
+    # Remove leading and ending slash for appropriate foreach loop
+    $path = $path -replace '^/', '' -replace '/$', ''
+    $absPath = '/'
   
-  foreach ($subFolder in $path.split('/')) {
-    $folderName = ($absPath + $subFolder)
-    if (! $folderBrowser.getFolder($folderName)) {
-      write-verbose -Message ('* Creating folder structure ' + $folderName)
-      try {
-        if ($PSCmdlet.ShouldProcess('Folder ' + $folderName + ' does not exist and must be created.')) {
-          $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
-            [com.uc4.api.UC4ObjectName]::new($subFolder), 
-            [com.uc4.api.Template]::FOLD, 
-            $folderBrowser.getFolder($absPath)
-          )
-          $aeConnection.sendRequest($createFolderRequest)
+    foreach ($subFolder in $path.split('/')) {
+      $folderName = ($absPath + $subFolder)
+      if (! $folderBrowser.getFolder($folderName)) {
+        write-verbose -Message ('* Creating folder structure ' + $folderName)
+        try {
+          if ($PSCmdlet.ShouldProcess('Folder ' + $folderName + ' does not exist and must be created.')) {
+            $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
+              [com.uc4.api.UC4ObjectName]::new($subFolder), 
+              [com.uc4.api.Template]::FOLD, 
+              $folderBrowser.getFolder($absPath)
+            )
+            $aeConnection.sendRequest($createFolderRequest)
       
-          # Reload folderBrowser
-          $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
-          $aeConnection.sendRequest($folderBrowser)
+            # Reload folderBrowser
+            $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+            $aeConnection.sendRequest($folderBrowser)
+          }
+        }
+        catch {
+          throw ('! Issue creating folder.')
         }
       }
-      catch {
-        throw ('! Issue creating folder.')
-      }
+      $absPath = ($absPath + $subFolder + '/')
     }
-    $absPath = ($absPath + $subFolder + '/')
+    
+    $resultSet += $folderBrowser.getFolder($absPath)
   }
-  return $folderBrowser.getFolder($absPath)
+  
+  end {
+    Write-Debug -Message '** new-aeFolder end'
+    return ($resultSet | Sort-Object Path)
+  }
 }
 
-function Search-aeStatistic  {
-  <#
+function Get-aeStatistic  {
+<#
       .SYNOPSIS
-      Get statistic information of an object.
+      Get statistic of a single object.
 
       .DESCRIPTION
-      Get statistic data of objects.
+      Equals the rightclick-statistic on a single object functionality.
 
       .PARAMETER aeConnection
       WorkflowCommander AE Connection object.
 
       .PARAMETER name
-      Name of object whom statistic should be shown.
+      Name of object of the statistic to show.
+
+      .PARAMETER amount
+      Amount of statistic entries to show. Default is the users setting.
 
       .EXAMPLE
-      Search-aeStatistic -ae $ae -name TEST.JOB
+      Get-aeStatistic -ae $ae -name JOBF.002
+      Get all available statistic entries (depending on user settings and available statistic entries).
+
+      Get-aeStatistic -ae $ae -name JOBF.002 -amount 1
+      Get latest statistic entry only.
 
       .LINK
       http://workflowcommander.blogspot.com
 
       .OUTPUTS
-      aeStatistic
+      StatisticSearchItem items
   #>
+  param (
+    [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+    [Alias('ae')]
+    [object]$aeConnection,
+    [Parameter(mandatory,HelpMessage='Objectname',ValueFromPipelineByPropertyName,ValueFromPipeline)]
+    [string]$name,
+    [int]$amount = 1
+  )
+
+  begin {
+    Write-Debug -Message '** Get-aeStatistic start'
+    $resultSet = @()
+  }
+
+  process {
+    try {
+      $getStatistic = [com.uc4.communication.requests.ObjectStatistics]::new([com.uc4.api.UC4ObjectName]::new($name),$amount)
+      $aeConnection.sendRequest($getStatistic)
+    }
+    catch {
+      Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
+      $resultSet += (_new-aeEmptyStatisticResult -name "$name" -result $WFCFAILURE)
+      return
+    }
+
+    write-verbose -message ('* Getting ' + $getStatistic.size() + ' statistic entries')
+    if ($getStatistic.size() -eq 0) {
+      $resultSet += (_new-aeEmptyStatisticResult -name "$name" -result $WFCEMPTY)
+    }
+    else {
+      $statisticIterator = $getSTatistic.resultIterator()
+      while ($statisticIterator.hasNext()) {
+        $resultSet += $statisticIterator.next()
+      }
+    }
+  }
+  
+  end {
+    Write-Debug -Message '** Get-aeStatistic end'
+    return $resultSet
+  }
+}
+
+
+function Search-aeStatistic  {
   param (
     [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
