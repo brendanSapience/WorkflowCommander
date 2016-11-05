@@ -1,4 +1,4 @@
-#########################################################################################
+﻿#########################################################################################
 # WorkflowCommander, copyrighted by Joel Wiesmann, 2016
 # 
 # Warm welcome to my code, whatever wisdom you try to find here.
@@ -15,14 +15,9 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
-$VerbosePreference = 'Continue'
-
-#########################################################################################
-# Internal functions
-#########################################################################################
 
 # Returned after an object export request. This object type is also used for -showNoExport
-function _new-aeObjectExportObject {
+function New-WFCObjectExportObject {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
@@ -49,7 +44,7 @@ function _new-aeObjectExportObject {
 }
 
 # For empty com.uc4.api.StatisticSearchItem
-function _new-aeEmptyStatisticResult {
+function New-WFCEmptyStatisticResult {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
@@ -70,7 +65,7 @@ function _new-aeEmptyStatisticResult {
 }
 
 # As we cannot create an empty com.uc4.api.SearchResultItem we create an own type.
-function _new-aeEmptySearchResult {
+function New-WFCEmptySearchResult {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
@@ -93,8 +88,9 @@ function _new-aeEmptySearchResult {
 
 # To identify whether an import was successful or not, we return all imported objects. This type can also be
 # used to identify a failed import with an UNDEF type.
-function _new-aeImportResult {
+function New-WFCImportResult {
   param(
+    [AllowEmptyString()]
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
     [string]$type,
