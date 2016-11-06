@@ -17,7 +17,7 @@
 #########################################################################################
 
 function Get-aeStatistic  {
-<#
+  <#
       .SYNOPSIS
       Get statistic of a single object.
 
@@ -28,10 +28,10 @@ function Get-aeStatistic  {
       WorkflowCommander AE Connection object.
 
       .PARAMETER name
-      Name of object of the statistic to show.
+      Name of object of the statistic to show. This must not contain any wildcards - you might pipe from search-aeObject if you require this.
 
       .PARAMETER amount
-      Amount of statistic entries to show. Default is the users setting.
+      Amount of statistic entries to show. Default is the users setting (which is the default). Order is always newest to oldest entry. 
 
       .EXAMPLE
       Get-aeStatistic -ae $ae -name JOBF.002
@@ -52,7 +52,7 @@ function Get-aeStatistic  {
     [object]$aeConnection,
     [Parameter(mandatory,HelpMessage='Objectname',ValueFromPipelineByPropertyName,ValueFromPipeline)]
     [string]$name,
-    [int]$amount = 1
+    [int]$amount
   )
 
   begin {
@@ -90,19 +90,94 @@ function Get-aeStatistic  {
 }
 
 function Search-aeStatistic  {
+  <#
+      .SYNOPSIS
+      Search for statistic entries.
+
+      .DESCRIPTION
+      Equals the period search in the AWA GUI.
+
+      .PARAMETER aeConnection
+      WorkflowCommander AE Connection object.
+
+      .PARAMETER name
+      Name of object of the statistic to show. Wildcards are possible.
+
+      .EXAMPLE
+      search-aeStatistic -ae $ae -name JOBF.002 -xxxxxx
+      x.
+
+      .LINK
+      http://workflowcommander.blogspot.com
+
+      .OUTPUTS
+      StatisticSearchItem items
+  #>
   param (
     [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
     [object]$aeConnection,
-    [Parameter(mandatory,HelpMessage='Objectname',ValueFromPipelineByPropertyName,ValueFromPipeline)]
-    [string[]]$name
+    [string]$name  = $null,
+    [string]$alias = $null,
+    [string]$archiveKey1 = $null,
+    [string]$archiveKey2 = $null,
+    [switch]$archiveKeyAND,
+    [string]$dstHost = $null,
+    [string]$srcHost = $null,
+    [string]$status = $null,
+    [int]$runid = $null,
+    [int]$topRunid = $null,
+    [string]$queue = $null
   )
 
-  $searchStatistic = [com.uc4.communication.requests.GenericStatistics]::new()
-  $searchStatistic.setObjectName('JOBF.002')
-  $searchStatistic.selectAllTypes()
-  $aeConnection.sendRequest($searchStatistic)
-  $searchStatistic.size()
-  $statisticentry = $searchStatistic.resultIterator().next()
-  $statisticentry
+  begin {
+    $resultSet = @()
+  }
+
+  process {
+    $searchStatistic = [com.uc4.communication.requests.GenericStatistics]::new()
+  
+    $searchStatistic.setObjectName($name)
+    $searchStatistic.setAlias($alias)
+    $searchStatistic.setArchiveKey1($archiveKey1)
+    $searchStatistic.setArchiveKey2($archiveKey2)
+    $searchStatistic.setArchiveKeyAndRelation($archiveKeyAND)
+ 
+    #$searchStatistic.setDateSelectionActivation()
+    #$searchStatistic.setDateSelectionEnd()
+    #$searchStatistic.setDateSelectionNone()
+    #$searchStatistic.setDateSelectionStart()
+    #$searchStatistic.setFromDate("com.uc4.api.datetime")
+    #$searchStatistic.setToDate("com.uc4.api.datetime")
+    
+    $searchStatistic.setDestinationHost($dstHost)
+    $searchStatistic.setSourceHost($srcHost)
+  
+    $searchStatistic.setStatus($status)
+    
+    $searchStatistic.setRunID($runid)  
+    $searchStatistic.setTopRunID($topRunid)
+  
+    #$searchStatistic.setPlatform*($true)
+    $searchStatistic.selectAllTypes()
+    #$searchStatistic.setType*($true)
+  
+    $searchStatistic.setQueue($queue)
+    try {
+      $aeConnection.sendRequest($searchStatistic)
+      $iterator = $searchStatistic.resultIterator()
+      while($iterator.hasNext()) {
+        $resultSet += $iterator.next()
+      }
+    }
+    catch {
+      # TODO: add FAIL and check usage of getAllMessageBoxes() in other try/catch blocks
+      Write-Warning ('! ' + $searchStatistic.getAllMessageBoxes())
+    }
+  }
+  
+  end {
+    return $resultSet
+  }
+  
 }
