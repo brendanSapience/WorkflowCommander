@@ -123,9 +123,7 @@ function Search-aeStatistic  {
     [string]$archiveKey1 = $null,
     [string]$archiveKey2 = $null,
     [switch]$archiveKeyAND,
-    [Parameter(ValueFromPipelineByPropertyName)]
     [string]$dstHost = $null,
-    [Parameter(ValueFromPipelineByPropertyName)]
     [string]$srcHost = $null,
     [string]$status = $null,
     [Parameter(ValueFromPipelineByPropertyName)]
@@ -133,6 +131,10 @@ function Search-aeStatistic  {
     [Parameter(ValueFromPipelineByPropertyName)]
     [int]$topRunid = $null,
     [string]$queue = $null,
+    [ValidateSet('noConstraint', 'Activation', 'Start', 'End')]
+    [string]$dateSearch = 'noConstraint',
+    [datetime]$fromDateTime = [DateTime]::Today,
+    [datetime]$toDateTime = [datetime]::Now,
     [Parameter(ValueFromPipelineByPropertyName)]
     [ValidateSet('JOBS',
         'JOBP','CALE','CALL','CITC',
@@ -162,18 +164,20 @@ function Search-aeStatistic  {
     $searchStatistic.setArchiveKey2($archiveKey2)
     $searchStatistic.setArchiveKeyAndRelation($archiveKeyAND)
  
-    # TODO: Parameterset
-    #$searchStatistic.setDateSelectionActivation()
-    #$searchStatistic.setDateSelectionEnd()
-    #$searchStatistic.setDateSelectionNone()
-    #$searchStatistic.setDateSelectionStart()
-    #$searchStatistic.setFromDate("com.uc4.api.datetime")
-    #$searchStatistic.setToDate("com.uc4.api.datetime")
+    switch($dateSearch) {
+      'noConstraint' { $searchStatistic.setDateSelectionNone() }
+      'activation' { $searchStatistic.setDateSelectionActivation() }
+      'start' { $searchStatistic.setDateSelectionStart() }
+      'end' { $searchStatistic.setDateSelectionEnd() }
+    }
+
+    $searchStatistic.setFromDate([com.uc4.api.Datetime]::new($fromDateTime.ToString('yyyy-MM-dd HH:mm:ss')))
+    $searchStatistic.setToDate([com.uc4.api.Datetime]::new($toDateTime.ToString('yyyy-MM-dd HH:mm:ss')))
     
     $searchStatistic.setDestinationHost($dstHost)
     $searchStatistic.setSourceHost($srcHost)
   
-    # Status is numeric
+    # TODO: Status is numeric require mapping
     $searchStatistic.setStatus($status)
     
     $searchStatistic.setRunID($runid)  
@@ -195,7 +199,8 @@ function Search-aeStatistic  {
         $searchStatistic.('setType' + $typeFilter)($true)
       }
     }
-    # TODO: Validateset
+    
+    # Missing parametrization
     #$searchStatistic.setPlatform*($true)
   
     $searchStatistic.setQueue($queue)
