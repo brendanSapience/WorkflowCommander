@@ -34,7 +34,7 @@ function Search-aeObject {
       .PARAMETER path
       Path where the object is stored. By default "/". 
 
-      .PARAMETER objType
+      .PARAMETER type
       Limits the object types that should be searched for. By default, all object types are searched.
 
       .PARAMETER text
@@ -56,7 +56,7 @@ function Search-aeObject {
       To date / time. Input as [datetime] or 'YYYY-MM-DD HH:MM:SS'
 
       .EXAMPLE
-      search-aeObject -ae $ae -name "*JOB*" -path "/PRODUCTION" -objType JOBS
+      search-aeObject -ae $ae -name "*JOB*" -path "/PRODUCTION" -type JOBS
       Searches for objects that name matches "*JOB*" and are stored below /PRODUCTION and are of type JOBS.
 
       .LINK
@@ -70,11 +70,10 @@ function Search-aeObject {
     [Alias('ae')]
     [WFC.Core.WFCConnection]$aeConnection,
     [Parameter(ValueFromPipeline,ValueFromPipelineByPropertyName)]
-    [string]$name       = '*',
+    [string]$name = '*',
     [Parameter(ValueFromPipelineByPropertyName)]
-    [string]$path       = $null,
+    [string]$path = $null,
     [Parameter(ValueFromPipelineByPropertyName)]
-    [Alias('type')]
     [ValidateSet('JOBS',
         'JOBP','CALE','CALL','CITC',
         'CLNT','CODE','CONN','CPIT',
@@ -86,8 +85,8 @@ function Search-aeObject {
         'SYNC','TZ','USER','USERG',
         'VARA','XSL','Executeable'
     )]
-    [string[]]$objType  = $null,
-    [string]$text       = $null,
+    [string[]]$type = $null,
+    [string]$text = $null,
     [ValidateSet('archive','process','title','documentation','varakey','varavalue','varaall')]  
     [string[]]$textType = $null,
     [switch]$NonRecursiveSearch,
@@ -104,11 +103,10 @@ function Search-aeObject {
   }
   
   process {
-    $subResultSet = @()
     $search = [com.uc4.communication.requests.SearchObject]::new()
     
     ###################
-    # Search for object or for usage?
+    # Search for object or for usage
     ###################
     $search.setSearchUseOfObjects($searchForUsage)
 
@@ -116,7 +114,7 @@ function Search-aeObject {
     # Objecttype filter
     ###################
     # Depending on whether we want to filter for object types or not we select all or only specific object types.
-    if ($objType -eq $null) {
+    if ($type -eq $null) {
       $search.selectAllObjectTypes() 
     }
     else {
@@ -124,7 +122,7 @@ function Search-aeObject {
 
       # This activates the object type search selection. To support new object types, just add the new type 
       # in the parameter validation. i.E. JOBS => $search.setTypeJOBS($true)
-      foreach ($typeFilter in $objType) {
+      foreach ($typeFilter in $type) {
         $search.('setType' + $typeFilter)($true)
       }
     }
@@ -208,34 +206,26 @@ function Search-aeObject {
       $aeConnection.sendRequest($search)
     }
     catch {
-      Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
-      $resultSet += (New-WFCEmptySearchResult -name "$name" -result $WFCFAILURE)
+      Write-Warning -message ('! Failed to query the AE: ' + $search.getAllMessageBoxes())
+      $resultSet += New-WFCEmptySearchResult -name "$name" -result FAIL
       return
     }
     
-    Write-Verbose -Message ('* Found ' + $search.size() + ' results. ' + $search.getMessageBox())
+    Write-Verbose -Message ('* Found ' + $search.size() + ' results. ')
 
-    try {
+    if ($search.size() -eq 0) {
+      Write-Verbose -Message ("3return empty")
+      $resultSet += New-WFCEmptySearchResult -name "$name" -result EMPTY
+    }
+    else {
       [java.util.Iterator]$iterator = $search.resultIterator()
       for ($result = 0; $result -lt $search.size(); $result++) {
         # The top level folder of the object equals to the client number. We don't want this to not confuse import-aeObject or other
         # functions. Instead we encode the source client information in an extra "client" field.
         [com.uc4.api.SearchResultItem]$item = $iterator.next()
-        $subResultSet += $item
+        $resultSet += $item
       }
     }
-    catch {
-      Write-Warning -Message "! Issue with gathering result items."
-    }
-    
-    # This feature can be very handy if comparing a list of objects (i.E. coming from a text file) with what is actually available on a system.
-    # Of course it could be misleading as well - i.E. if the namefilter is set to "*" and the datefilter says all created objects of today. That
-    # Would result in a result with objectname "*" with no further information, but this should not be the common use-case for using this switch.
-    if ($subResultSet.length -eq 0) {
-      $subResultSet += (New-WFCEmptySearchResult -name "$name" -result $WFCEMPTY)
-    }
-    
-    $resultSet += $subResultSet
   }
   
   end {

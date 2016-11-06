@@ -52,7 +52,7 @@ function Get-aeStatistic  {
     [object]$aeConnection,
     [Parameter(mandatory,HelpMessage='Objectname',ValueFromPipelineByPropertyName,ValueFromPipeline)]
     [string]$name,
-    [int]$amount
+    [int]$amount = 1
   )
 
   begin {
@@ -62,21 +62,21 @@ function Get-aeStatistic  {
 
   process {
     try {
-      $getStatistic = [com.uc4.communication.requests.ObjectStatistics]::new([com.uc4.api.UC4ObjectName]::new($name),$amount)
+      $getStatistic = [com.uc4.communication.requests.ObjectStatistics]::new([com.uc4.api.UC4ObjectName]::new($name), $amount)
       $aeConnection.sendRequest($getStatistic)
     }
     catch {
-      Write-Warning -message ('! Failed to query the AE: ' + $_.Exception.Message)
-      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result $WFCFAILURE)
+      Write-Warning -message ('! Failed to query the AE: ' + $_)
+      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result FAIL)
       return
     }
 
-    write-verbose -message ('* Getting ' + $getStatistic.size() + ' statistic entries')
+    write-verbose -message ('* Query resulted in ' + $getStatistic.size() + ' statistic entries')
     if ($getStatistic.size() -eq 0) {
-      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result $WFCEMPTY)
+      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result EMPTY)
     }
     else {
-      $statisticIterator = $getSTatistic.resultIterator()
+      $statisticIterator = $getStatistic.resultIterator()
       while ($statisticIterator.hasNext()) {
         $resultSet += $statisticIterator.next()
       }
@@ -117,20 +117,39 @@ function Search-aeStatistic  {
     [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
     [object]$aeConnection,
-    [string]$name  = $null,
+    [Parameter(ValueFromPipelineByPropertyName,ValueFromPipeline)]
+    [string]$name = $null,
     [string]$alias = $null,
     [string]$archiveKey1 = $null,
     [string]$archiveKey2 = $null,
     [switch]$archiveKeyAND,
+    [Parameter(ValueFromPipelineByPropertyName)]
     [string]$dstHost = $null,
+    [Parameter(ValueFromPipelineByPropertyName)]
     [string]$srcHost = $null,
     [string]$status = $null,
+    [Parameter(ValueFromPipelineByPropertyName)]
     [int]$runid = $null,
+    [Parameter(ValueFromPipelineByPropertyName)]
     [int]$topRunid = $null,
-    [string]$queue = $null
+    [string]$queue = $null,
+    [Parameter(ValueFromPipelineByPropertyName)]
+    [ValidateSet('JOBS',
+        'JOBP','CALE','CALL','CITC',
+        'CLNT','CODE','CONN','CPIT',
+        'DASH','DOCU','EVNT','FILTER',
+        'FOLD','HOST','HOSTG','HSTA',
+        'JOBF','JOBG','JOBI','JOBQ',
+        'JSCH','LOGIN','PERIOD','PRPT',
+        'QUEUE','SCRI','SERV','STORE',
+        'SYNC','TZ','USER','USERG',
+        'VARA','XSL','Executeable'
+    )]
+    [string[]]$type = $null
   )
 
   begin {
+    Write-Debug -Message '** Search-aeStatistic start'
     $resultSet = @()
   }
 
@@ -143,6 +162,7 @@ function Search-aeStatistic  {
     $searchStatistic.setArchiveKey2($archiveKey2)
     $searchStatistic.setArchiveKeyAndRelation($archiveKeyAND)
  
+    # TODO: Parameterset
     #$searchStatistic.setDateSelectionActivation()
     #$searchStatistic.setDateSelectionEnd()
     #$searchStatistic.setDateSelectionNone()
@@ -153,30 +173,63 @@ function Search-aeStatistic  {
     $searchStatistic.setDestinationHost($dstHost)
     $searchStatistic.setSourceHost($srcHost)
   
+    # Status is numeric
     $searchStatistic.setStatus($status)
     
     $searchStatistic.setRunID($runid)  
     $searchStatistic.setTopRunID($topRunid)
   
+    ###################
+    # Objecttype filter
+    ###################
+    # Depending on whether we want to filter for object types or not we select all or only specific object types.
+    if ($type -eq $null) {
+      $searchStatistic.selectAllTypes()
+    }
+    else {
+      $searchStatistic.unselectAllTypes()
+
+      # This activates the object type search selection. To support new object types, just add the new type 
+      # in the parameter validation. i.E. JOBS => $search.setTypeJOBS($true)
+      foreach ($typeFilter in $type) {
+        $searchStatistic.('setType' + $typeFilter)($true)
+      }
+    }
+    # TODO: Validateset
     #$searchStatistic.setPlatform*($true)
-    $searchStatistic.selectAllTypes()
-    #$searchStatistic.setType*($true)
   
     $searchStatistic.setQueue($queue)
+    
     try {
       $aeConnection.sendRequest($searchStatistic)
+    }
+    catch {
+      $resultSet += New-WFCEmptyStatisticResult -name "$name" -result FAIL
+      Write-Warning ('! Failed to query the AE: ' + $searchStatistic.getAllMessageBoxes())
+      return
+    }
+
+    $aeMsg = $searchStatistic.getAllMessageBoxes()
+    if ($aeMsg -ne '') {
+      Write-Warning -Message ('! Querying the AE failed: ' + $aeMsg)
+      $resultSet += New-WFCEmptyStatisticResult -name "$name" -result FAIL
+      return
+    }
+
+    write-verbose -message ('* Query resulted in ' + $searchStatistic.size() + ' statistic entries')
+    if ($searchStatistic.size() -eq 0) {
+      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result EMPTY)
+    }
+    else {
       $iterator = $searchStatistic.resultIterator()
       while($iterator.hasNext()) {
         $resultSet += $iterator.next()
       }
-    }
-    catch {
-      # TODO: add FAIL and check usage of getAllMessageBoxes() in other try/catch blocks
-      Write-Warning ('! ' + $searchStatistic.getAllMessageBoxes())
-    }
+    }  
   }
   
   end {
+    Write-Debug -Message '** Search-aeStatistic end'
     return $resultSet
   }
   

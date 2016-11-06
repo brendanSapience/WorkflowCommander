@@ -46,6 +46,7 @@ function New-WFCObjectExportObject {
 # For empty com.uc4.api.StatisticSearchItem
 function New-WFCEmptyStatisticResult {
   param(
+    [AllowEmptyString()]
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
     [ValidateSet('OK','EMPTY','FAIL')]

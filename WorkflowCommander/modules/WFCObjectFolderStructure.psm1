@@ -75,16 +75,22 @@ function New-aeFolder  {
         write-verbose -Message ('* Creating folder structure ' + $folderName)
         try {
           if ($PSCmdlet.ShouldProcess('Folder ' + $folderName + ' does not exist and must be created.')) {
-            $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
-              [com.uc4.api.UC4ObjectName]::new($subFolder), 
-              [com.uc4.api.Template]::FOLD, 
-              $folderBrowser.getFolder($absPath)
-            )
-            $aeConnection.sendRequest($createFolderRequest)
+            try {
+              $createFolderRequest = [com.uc4.communication.requests.CreateObject]::new(
+                [com.uc4.api.UC4ObjectName]::new($subFolder), 
+                [com.uc4.api.Template]::FOLD, 
+                $folderBrowser.getFolder($absPath)
+              )
+              $aeConnection.sendRequest($createFolderRequest)
       
-            # Reload folderBrowser
-            $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
-            $aeConnection.sendRequest($folderBrowser)
+              # Reload folderBrowser
+              $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+              $aeConnection.sendRequest($folderBrowser)
+            }
+            catch {
+              Write-Warning -message ('! Failed to create folder: ' + $folderBrowser.getAllMessageBoxes())
+              return
+            }
           }
         }
         catch {

@@ -62,23 +62,24 @@ function Export-aeObject {
   begin {
     Write-Debug -Message '** Export-aeObject start'
     $resultSet = @()
-    $startExportDateTime = ''
+    $startExportDateTime = [datetime]::Now
   }
   
   process {
-    # As export-aeobject is often fed by search-aeobject output, it might be that there was no result. So we should only set the
-    # starttime if we really at least received one pipe entry.
-    if (! $startExportDateTime) {
-      $startExportDateTime = [datetime]::Now
-    }
-  
     # Before we export we need to identify whether the object exists and whether the type is exporteable
     $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
   
-    # There are limitations when it comes to 
-    if ($objectInfo.type -eq 'USER' -or $objectInfo.type -eq 'FOLD' -or $objectInfo.result -eq 'UNDEF' -or $objectinfo.result -eq 'EMPTY') {
-      Write-Verbose -Message ('* ' + $name + ' not exported.')
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result $WFCEMPTY 
+    # Some objects are not exportable. Same applies if object does not exist.
+    if (@('USER','FOLD').contains($objectInfo.type)) {
+      Write-Warning -Message ('! ' + $name + ' not exported because it is of type: ' + $objectInfo.type)
+      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
+      return
+    }
+    
+    # If the object was not identifieable, we do not try to export 
+    if (@('FAIL','EMPTY').contains($objectInfo.result)) {
+      Write-Verbose -Message ('* ' + $name + ' not exported because was not identifieable (result was ' + $objectInfo.result + ')')
+      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
       return
     }
 
@@ -101,18 +102,19 @@ function Export-aeObject {
       $aeConnection.sendRequest($aeExportRequest)
     }
     catch {
-      Write-Warning -Message ('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $_.Exception.Message)
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result $WFCFAILURE
+      Write-Warning -Message ('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $aeExportRequest.getAllMessageBoxes())
+      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result FAIL
       return
     }
     
     # The above often returns no error in case that invalid objects have been exported.
-    $msg = $aeExportRequest.getMessageBox()
+    $msg = $aeExportRequest.getAllMessageBoxes()
     if($msg) {
       Write-Warning -Message ('! AE export failure for ' + $name + ': ' + $msg)
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result $WFCFAILURE
+      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result FAIL
       return
-    }      
+    }
+      
     # We can encode the (folder-)path where the object has been exported from in case that the export has not been done from a V11+ system.
     # This information is encoded in the uc-name element.
     [xml]$xmlObjectInfo = get-content -path $outputFilename
@@ -122,13 +124,8 @@ function Export-aeObject {
     $null = $xmlObjectInfo.'uc-export'.SetAttributeNode($attribute)
     $xmlObjectInfo.OuterXml | Out-File -Encoding ASCII -FilePath $outputFilename
 
-    # When exporting UC_* VARAs, the path will be empty.
-    if (! $path) {
-      $path = '-'
-    }
-
     # Finally return the information on the exported object      
-    $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -path "$path" -file $outputFilename -result $WFCOK 
+    $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -path "$path" -file $outputFilename -result OK
     Write-Verbose -Message ('* Object ' + $name + ' has been exported successfully.')
   }
   
@@ -238,7 +235,7 @@ function Import-aeObject {
       }
       catch {
         Write-Warning -Message ('! Issues loading XML file ' + $xmlFile + ' to extract basic information and folder destination. Unsafe import will be skipped.')
-        $resultSet += New-WFCImportResult -name '' -file $xmlFile -result $WFCFAILURE
+        $resultSet += New-WFCImportResult -name '' -file $xmlFile -result FAIL
         return
       }
 
@@ -249,7 +246,7 @@ function Import-aeObject {
       
       # If identifiedPath is empty, we can not safely import the object.
       if (! $identifiedPath) {
-        $resultSet += New-WFCImportResult -name "$identifiedName" -file $xmlFile -type $identifiedType -result $WFCFAILURE
+        $resultSet += New-WFCImportResult -name "$identifiedName" -file $xmlFile -type $identifiedType -result FAIL
         Write-Warning -Message ('! AE path for object import of ' + $xmlFile.fullname + ' could not be identified.')
         return
       }
@@ -275,29 +272,23 @@ function Import-aeObject {
         }
       }
       catch {
-        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCFAILURE
-        Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $aeMsg)
+        Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $importRequest.getAllMessageBoxes())
+        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result FAIL
         return
       }
 
       if ($aeMsg -match 'U04005758') {
         Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
-        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCEMPTY
+        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result EMPTY
       }
       else {
-        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $WFCOK
+        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result OK
       }
     }
   }
       
   end {
-    if ($startImportDateTime) {
-      Write-Verbose -Message ('* Imported ' + $resultSet.length + ' objects. Duration: ' + ([datetime]::Now - $startImportDateTime).toString())
-    }
-    else {
-      Write-Warning -Message ('! Nothing imported as file/directory was not existing or empty.')
-    }
-
+    Write-Verbose -Message ('* Imported ' + $resultSet.length + ' objects. Duration: ' + ([datetime]::Now - $startImportDateTime).toString())
     Write-Debug -Message '** Import-aeObject end'
     return ($resultSet | Sort-Object -Property Name)
   }
