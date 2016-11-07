@@ -66,7 +66,7 @@ function Search-aeObject {
       Array of findings.
   #>
   Param(
-    [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+    [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
     [WFC.Core.WFCConnection]$aeConnection,
     [Parameter(ValueFromPipeline,ValueFromPipelineByPropertyName)]
@@ -199,9 +199,7 @@ function Search-aeObject {
     }
     $search.setSearchLocation(([string]$aeConnection.client + $path), (! $NonRecursiveSearch))
 
-    ###################
-    # Start search and gather results
-    ###################
+    # Finally after all the parametrization of the search, send it to the AE and receive the results.
     try {
       $aeConnection.sendRequest($search)
     }
@@ -212,18 +210,14 @@ function Search-aeObject {
     }
     
     Write-Verbose -Message ('* Found ' + $search.size() + ' results. ')
-
+    
     if ($search.size() -eq 0) {
-      Write-Verbose -Message ("3return empty")
       $resultSet += New-WFCEmptySearchResult -name "$name" -result EMPTY
     }
     else {
-      [java.util.Iterator]$iterator = $search.resultIterator()
-      for ($result = 0; $result -lt $search.size(); $result++) {
-        # The top level folder of the object equals to the client number. We don't want this to not confuse import-aeObject or other
-        # functions. Instead we encode the source client information in an extra "client" field.
-        [com.uc4.api.SearchResultItem]$item = $iterator.next()
-        $resultSet += $item
+      $searchIterator = $search.resultIterator()
+      while ($searchIterator.hasNext()) {
+        $resultSet += $searchIterator.next()
       }
     }
   }

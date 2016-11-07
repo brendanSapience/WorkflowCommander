@@ -16,10 +16,86 @@
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
 
-# Profile directory defines where to search for profile files
-$global:WFCPROFILES = ''
+# Profile directory defines where to search for profile files. You can set this to any folder you like.
+# Make sure you have an ending \ !!!
+$WFCPROFILES = ([Environment]::GetFolderPath("MyDocuments") + '\')
 
-# Default values for failure / empty / OK result. Do not change these, it will break WFC.
-$global:WFCFAILURE = 'FAIL'
-$global:WFCEMPTY   = 'EMPTY'
-$global:WFCOK      = 'OK'
+function New-aeConnection {
+  Param(
+    [Parameter(ParameterSetName = "profile",HelpMessage = "Name of profile to load.",Mandatory)]
+    [string]$profile,
+    [Parameter(ParameterSetName = "new",HelpMessage = "AE client to login into.",Mandatory)]
+    [int]$client,
+    [Parameter(ParameterSetName = "new",HelpMessage = "AE server / IP.",Mandatory)]
+    [string]$server,
+    [Parameter(ParameterSetName = "new",HelpMessage = "AE user to login with.",Mandatory)]
+    [string]$username,
+    [Parameter(ParameterSetName = "new")]
+    [String]$department = $null,
+    [Parameter(ParameterSetName = "new")]
+    [string]$saveAsProfile = $null,
+    [Parameter(ParameterSetName = "new")]
+    [int]$port = 2217,
+    [Parameter(ParameterSetName = "new",Mandatory)]
+    [SecureString]$password
+  )
+
+  begin {
+    Write-Debug -message "** New-aeConnection start."
+  }
+
+  process {
+    Write-Verbose -Message "* Initiating connection..."
+
+    if ($profile) {
+      try {
+        Write-Debug -Message ("** Creating connection using profile: " + $WFCPROFILES + $profile  + ".xml")
+        $WFCConnection = [WFC.Core.WFCConnection]::new($WFCPROFILES + $profile  + '.xml')
+      }
+      catch {
+        throw ($_)
+      }
+    }
+    else {
+      Write-Debug -message "** Creating connection using adhoc profile / credentials."
+      $WFCConnection = [WFC.Core.WFCConnection]::new($username, $department, $password, $server, $client, $port)
+    }
+
+    if ($saveAsProfile) {
+      try {
+        $profileFilename = $WFCConnection.saveProfile($WFCPROFILES + $saveAsProfile + '.xml')
+        Write-Verbose -message "* Profile stored: " + $profileFilename.FullName
+      }
+      catch {
+        throw
+      }
+    }
+
+    if ($WFCConnection.message) {
+      write-warning -message $WFCConnection.message
+      return
+    }
+
+    Write-Warning -message "**************************************************************************************"
+    Write-Warning -message "* WorkflowCommander is a copyrighted work by Joel Wiesmann (joel.wiesmann@gmail.com) *"
+    Write-Warning -message "* >  Do only continue if you read the disclaimer, manual & licensing information.  < *"
+    Write-Warning -message "**************************************************************************************"
+    Write-Warning -message "* Connected:"
+    Write-Warning -message ("* User       " + $WFCConnection.username)
+    Write-Warning -message ("* Department " + $WFCConnection.department)
+    Write-Warning -message ("* Systemname " + $WFCConnection.systemname)
+    Write-Warning -message ("* Client     " + $WFCConnection.client)
+    Write-Warning -message ("* License    '" + $WFCConnection.licensedTo + "' expires in: " + $WFCConnection.expiryDays + " days.")
+
+    if ($WFCConnection.expiryDays -lt 30) {
+      Write-Warning -message ("! Your license is about to expire. Like the product? Get a license!")
+      Write-Warning -message ("! joel.wiesmann@gmail.com / XING / workflowcommander.blogspot.com")
+    }
+
+    return $WFCConnection
+  }
+
+  end {
+    Write-Debug -Message ("** New-aeConnection ended.")
+  }
+}

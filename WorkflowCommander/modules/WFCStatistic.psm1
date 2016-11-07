@@ -61,19 +61,21 @@ function Get-aeStatistic  {
   }
 
   process {
+    # As there is not much parametrization we can directly instanciate the request and read the result into the resultset before
+    # we return it.
     try {
       $getStatistic = [com.uc4.communication.requests.ObjectStatistics]::new([com.uc4.api.UC4ObjectName]::new($name), $amount)
       $aeConnection.sendRequest($getStatistic)
     }
     catch {
       Write-Warning -message ('! Failed to query the AE: ' + $_)
-      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result FAIL)
+      $resultSet += New-WFCEmptyStatisticResult -name "$name" -result FAIL
       return
     }
 
     write-verbose -message ('* Query resulted in ' + $getStatistic.size() + ' statistic entries')
     if ($getStatistic.size() -eq 0) {
-      $resultSet += (New-WFCEmptyStatisticResult -name "$name" -result EMPTY)
+      $resultSet += New-WFCEmptyStatisticResult -name "$name" -result EMPTY
     }
     else {
       $statisticIterator = $getStatistic.resultIterator()
@@ -158,33 +160,47 @@ function Search-aeStatistic  {
   process {
     $searchStatistic = [com.uc4.communication.requests.GenericStatistics]::new()
   
+    # The complexity is compareable with the common object search and would be so much easier to do via SQL.
+    
+    ###################
+    # Basic static object data
+    ###################
     $searchStatistic.setObjectName($name)
     $searchStatistic.setAlias($alias)
     $searchStatistic.setArchiveKey1($archiveKey1)
     $searchStatistic.setArchiveKey2($archiveKey2)
     $searchStatistic.setArchiveKeyAndRelation($archiveKeyAND)
  
+    ###################
+    # Date filter
+    ###################
     switch($dateSearch) {
       'noConstraint' { $searchStatistic.setDateSelectionNone() }
       'activation' { $searchStatistic.setDateSelectionActivation() }
       'start' { $searchStatistic.setDateSelectionStart() }
       'end' { $searchStatistic.setDateSelectionEnd() }
     }
-
+    # The periodic search doesn't care if there is a date set + no date selection so noConstraint isn't handled separately.
     $searchStatistic.setFromDate([com.uc4.api.Datetime]::new($fromDateTime.ToString('yyyy-MM-dd HH:mm:ss')))
     $searchStatistic.setToDate([com.uc4.api.Datetime]::new($toDateTime.ToString('yyyy-MM-dd HH:mm:ss')))
     
+    ###################
+    # Source / Destination host (JOBF only)
+    ###################
     $searchStatistic.setDestinationHost($dstHost)
     $searchStatistic.setSourceHost($srcHost)
   
     # TODO: Status is numeric require mapping
     $searchStatistic.setStatus($status)
     
+    ###################
+    # RunID search
+    ###################
     $searchStatistic.setRunID($runid)  
     $searchStatistic.setTopRunID($topRunid)
   
     ###################
-    # Objecttype filter
+    # Objecttype filter, more or less copy from Search-aeObject
     ###################
     # Depending on whether we want to filter for object types or not we select all or only specific object types.
     if ($type -eq $null) {
@@ -202,7 +218,10 @@ function Search-aeStatistic  {
     
     # Missing parametrization
     #$searchStatistic.setPlatform*($true)
-  
+
+    ###################
+    # Queue filter.
+    ###################
     $searchStatistic.setQueue($queue)
     
     try {
@@ -237,5 +256,4 @@ function Search-aeStatistic  {
     Write-Debug -Message '** Search-aeStatistic end'
     return $resultSet
   }
-  
 }
