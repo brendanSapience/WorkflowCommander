@@ -143,8 +143,6 @@ function Export-aeObject {
   }
 }
 
-# TODO: import eines existierenden Objektes an einen neuen Ort ist nicht korrekt gemacht. Muss nach dem Import prüfen ob die Lokation (search)
-#       mit dem gewünschten PATH übereinstimmt und sonst muss das Objekt verschoben werden.
 function Import-aeObject {
   <#
       .SYNOPSIS
@@ -184,7 +182,7 @@ function Import-aeObject {
     [Parameter(ValueFromPipeline,HelpMessage='File or directory to import XMLs from.',ValueFromPipelineByPropertyName,Mandatory)]
     [AllowNull()]
     [Alias('directory')]
-    [io.fileinfo[]]$file,
+    [io.fileinfo]$file,
     [Parameter(ValueFromPipelineByPropertyName)]
     [string]$path = $null,
     [switch]$noOverwrite
@@ -279,11 +277,21 @@ function Import-aeObject {
 
       if ($aeMsg -match 'U04005758') {
         Write-Warning -Message ('! File ' + $xmlFile.fullname + ' has not been imported because object already exists.')
-        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result EMPTY
+        $result = 'EMPTY'
       }
       else {
-        $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result OK
+        # This will make sure that the import took place at the expected location even if the object was overwritten at the origin location
+        $mvResult = Move-aeObject -aeConnection $aeConnection -name $identifiedName -path $identifiedPath
+        
+        if ($mvResult -eq 'FAIL') {
+          $result = 'FAIL'
+        }
+        else {
+          $result = 'OK'
+        }
       }
+      
+      $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result $result
     }
   }
       

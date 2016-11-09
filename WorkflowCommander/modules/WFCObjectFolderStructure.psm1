@@ -45,8 +45,8 @@ function New-aeFolder  {
     [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
     [WFC.Core.WFCConnection]$aeConnection,
-    [Parameter(Mandatory,HelpMessage='Path to create on AE server.')]
-    [string[]]$path
+    [Parameter(Mandatory,HelpMessage='Path to create on AE server.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
+    [string]$path
   )
  
   begin {
@@ -63,6 +63,7 @@ function New-aeFolder  {
     }
     catch {
       throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
+      return
     }
   
     # Remove leading and ending slash for appropriate foreach loop
@@ -109,3 +110,144 @@ function New-aeFolder  {
   }
 }
 
+function Get-aeFolder {
+  <#
+      .SYNOPSIS
+      Receive a iFolder object representing a folder. 
+
+      .DESCRIPTION
+      This is mostly interesting for internal usage. For checking availability or sub-folder structures use search-aeObject.
+
+      .PARAMETER aeConnection
+      WorkflowCommander AE Connection object.
+
+      .PARAMETER path
+      Path to get. If not existing, it will return $null.
+
+      .EXAMPLE
+      Get-aeFolder -ae $ae -path /PRODUCTION/SYSTEMA/FOLDER1
+      Receive IFolder object.
+
+      .LINK
+      http://workflowcommander.blogspot.com
+
+      .OUTPUTS
+      IFolder.
+  #>
+  param (
+    [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+    [Alias('ae')]
+    [WFC.Core.WFCConnection]$aeConnection,
+    [Parameter(Mandatory,HelpMessage='Name of the path to get.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
+    [string]$path
+  )
+  
+  begin {
+    Write-Debug -Message '** Get-aeFolder start'
+    $resultSet = @()
+    
+    $folderBrowser = [com.uc4.communication.requests.FolderTree]::new()
+    try {
+      $aeConnection.sendRequest($folderBrowser)
+    }
+    catch {
+      throw('! Could not send request to AE. Please check exception: ' + $_.Exception.Message)
+      return
+    }
+  }
+
+  process {
+    $resultSet += $folderBrowser.getFolder($path)
+  }
+
+  end {
+    Write-Debug -Message '** Get-aeFolder end'
+    return $resultSet
+  }
+
+}
+function Move-aeObject  {
+  <#
+      .SYNOPSIS
+      Move object to folder.
+
+      .DESCRIPTION
+      Move an object to a new folder. This is not for renaming an object.
+
+      .PARAMETER aeConnection
+      WorkflowCommander AE Connection object.
+
+      .PARAMETER path
+      Path to move object to. If path does not exist, it will be created.
+
+      .EXAMPLE
+      Move-aeObject -ae $ae -name OBJECTNAME -path /PRODUCTION/SYSTEMA/FOLDER1
+      Creates /PRODUCTION/SYSTEMA/FOLDER1 (if necessary) and moves object.
+
+      .LINK
+      http://workflowcommander.blogspot.com
+
+      .OUTPUTS
+      Search result
+  #>
+  [CmdletBinding(SupportsShouldProcess)]
+  param (
+    [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+    [Alias('ae')]
+    [WFC.Core.WFCConnection]$aeConnection,
+    [Parameter(Mandatory,HelpMessage='Name of object to move.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
+    [string]$name,
+    [Parameter(Mandatory,HelpMessage='Path to move object to.',ValueFromPipelineByPropertyName)]
+    [string]$path
+  )
+ 
+  begin {
+    Write-Debug -Message '** Move-aeObject start'
+    $resultSet = @()
+  }
+
+  process {
+    # Get object to relocate
+    $object = Search-aeObject -aeConnection $aeConnection -name $name
+    
+    # If object is already at the correct place, stop here
+    if ($object.path -eq $path) {
+      Write-Verbose -Message ('* ' + $name + ' is already at target destination.')
+      $object.result = 'EMPTY'
+      $resultSet += $object
+      return
+    }
+    
+    # Create destination folder if necessary. If already available the command won't harm the system.
+    $dstPath = New-aeFolder -aeConnection $aeConnection -path $path
+    $srcPath = Get-aeFolder -aeConnection $aeConnection -path $object.path
+        
+    try {
+      # This does not really make sense like this.
+      $folderListRequest = [com.uc4.communication.requests.FolderList]::new($srcPath)
+      $aeConnection.sendRequest($folderListRequest)
+      $objectFolderList = $folderListRequest.findByName($name)
+      
+      $moveRequest = [com.uc4.communication.requests.MoveObject]::new($objectFolderList, $srcPath, $dstPath)
+      $aeConnection.sendRequest($moveRequest)
+    }
+    catch {
+      Write-Warning -message ('! Failed to move object to folder ' + $_)
+      return
+    }
+    
+    # Check whether object has been moved properly
+    $object = Search-aeObject -aeConnection $aeConnection -name $name
+    if ($object.path -ne $path) {
+      Write-Warning -Message ('! Moving ' + $name + ' to ' + $path + ' failed.')
+      $object.result = 'FAIL'
+    }
+
+    $resultSet += $object
+  }
+
+  end {
+    Write-Debug -Message '** Move-aeObject ended'
+    return $resultSet
+  }
+}
