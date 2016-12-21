@@ -1,10 +1,12 @@
 ﻿#########################################################################################
 # WorkflowCommander, copyrighted by Joel Wiesmann, 2016
-# 
-# Warm welcome to my code, whatever wisdom you try to find here.
+# <  THIS CODE IS EXPERIMENTAL  >
 #
-# This file is part of WorkflowCommander.
-# See http://www.binpress.com/license/view/l/9b201d0301d19b7bd87a3c7c6ae34bcd for full license details.
+# Get newest tipps and tricks on my blog:
+# http://workflowcommander.wordpress.com
+# ... or get in touch with me directly (joel.wiesmann <at> gmail <dot> com)
+# 
+# Read the LICENSE.txt provided with this software. GNU GPLv3
 #
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, 
 # INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -16,101 +18,96 @@
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
 function Export-aeObject {
-  <#
-      .SYNOPSIS
-      Export a object to an XML file.
+<#
+    .SYNOPSIS
+    Export a object to an XML file.
 
-      .DESCRIPTION
-      This is the export-as-xml functionality. It is done on a per-object basis so every object results in a separate file.
-      You can pipe the output of this function to import-aeObject or pipe the output of search-aeObject into this function.
-      Exported XMLs contain the original AE path (this is a WorkflowCommander feature). This can be considered when the
-      object is being imported.
+    .DESCRIPTION
+    This is the export-as-xml functionality. It is done on a per-object basis so every object results in a separate file.
+    You can pipe the output of this function to import-aeObject or pipe the output of search-aeObject into this function.
+    Exported XMLs contain the original AE path (this is a WorkflowCommander feature). This can be considered when the
+    object is being imported.
 
-      .PARAMETER aeConnection
-      WorkflowCommander AE connection object.
+    .PARAMETER aeConnection
+    WorkflowCommander AE connection object.
 
-      .PARAMETER name
-      Name of the AE object to export.
+    .PARAMETER name
+    Name of the AE object to export.
 
-      .PARAMETER file
-      Filename or directory name to where the object should be exported. If a directory is specified, the XML file will be named like the object.
+    .PARAMETER file
+    Filename or directory name to where the object should be exported. If a directory is specified, the XML file will be named like the object.
 
-      .EXAMPLE
-      export-aeObject -ae $ae -name MYJOB.WIN01 -file C:\temp
-      Exports MYJOB.WIN01 to c:\temp\MYJOB.WIN01.xml
+    .EXAMPLE
+    export-aeObject -ae $ae -name MYJOB.WIN01 -file C:\temp
+    Exports MYJOB.WIN01 to c:\temp\MYJOB.WIN01.xml
 
-      export-aeObject -ae $ae -name MYJOB.WIN01 -file C:\temp\output.xml
-      Exports MYJOB.WIN01 to c:\temp\output.xml.xml
+    export-aeObject -ae $ae -name MYJOB.WIN01 -file C:\temp\output.xml
+    Exports MYJOB.WIN01 to c:\temp\output.xml.xml
 
-      .LINK
-      http://workflowcommander.blogspot.com
+    .LINK
+    http://workflowcommander.wordpress.com
 
-      .OUTPUTS
-      List of successfully exported objects and path to their XML files.
-  #>
-  Param(
-    [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
-    [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
-    [Parameter(ValueFromPipeline,HelpMessage='Name of object to export.',ValueFromPipelineByPropertyName,Mandatory)]
-    [string[]]$name,
-    [Parameter(Mandatory,HelpMessage='File or directory to export the object to.')]
-    [Alias('directory')]
-    [IO.FileInfo]$file
-  )
+    .OUTPUTS
+    List of successfully exported objects and path to their XML files.
+#>
+[cmdletbinding(SupportsShouldProcess)]
+Param(
+  [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+  [Alias('ae')]
+  [Object]$aeConnection,
+  [Parameter(ValueFromPipeline,HelpMessage='Name of object to export.',ValueFromPipelineByPropertyName,Mandatory)]
+  [string[]]$name,
+  [Parameter(Mandatory,HelpMessage='File or directory to export the object to.')]
+  [Alias('directory')]
+  [IO.FileInfo]$file
+)
   
-  begin {
-    Write-Debug -Message '** Export-aeObject start'
-    $resultSet = @()
-    $startExportDateTime = [datetime]::Now
+begin {
+  Write-Debug -Message '** Export-aeObject start'
+  $resultSet = @()
+  $startExportDateTime = [datetime]::Now
+}
+  
+process {
+  # Before we export we need to identify whether the object exists and whether the type is exporteable
+  $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
+  
+  # Some objects are not exportable. Same applies if object does not exist.
+  if (@('USER','FOLD').contains($objectInfo.type)) {
+    Write-Warning -Message ('! ' + $name + ' not exported because it is of type: ' + $objectInfo.type)
+    $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
+    return
   }
-  
-  process {
-    # Before we export we need to identify whether the object exists and whether the type is exporteable
-    $objectInfo = search-aeObject -aeConnection $aeConnection -name "$name"
-  
-    # Some objects are not exportable. Same applies if object does not exist.
-    if (@('USER','FOLD').contains($objectInfo.type)) {
-      Write-Warning -Message ('! ' + $name + ' not exported because it is of type: ' + $objectInfo.type)
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
-      return
-    }
     
-    # If the object was not identifieable, we do not try to export 
-    if (@('FAIL','EMPTY').contains($objectInfo.result)) {
-      Write-Verbose -Message ('* ' + $name + ' not exported because was not identifieable (result was ' + $objectInfo.result + ')')
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
-      return
-    }
+  # If the object was not identifieable, we do not try to export 
+  if (@('FAIL','EMPTY').contains($objectInfo.result)) {
+    Write-Verbose -Message ('* ' + $name + ' not exported because was not identifieable (result was ' + $objectInfo.result + ')')
+    $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result EMPTY
+    return
+  }
 
-    Write-Debug -Message ('** Starting export of ' + $name)
+  Write-Debug -Message ('** Starting export of ' + $name)
       
-    # Determine XMl file name based on object name.
-    if ($file.Attributes.HasFlag([IO.FileAttributes]::Directory) -and $file.Attributes -ne -1) {
-      $outputFilename = ($file.fullname + '\' + $name + '.xml')
-    }
-    else {
-      $outputFilename = $file
-    }
+  # Determine XMl file name based on object name.
+  if ($file.Attributes.HasFlag([IO.FileAttributes]::Directory) -and $file.Attributes -ne -1) {
+    $outputFilename = ($file.fullname + '\' + $name + '.xml')
+  }
+  else {
+    $outputFilename = $file
+  }
 
-    if (Get-ChildItem -path $outputFilename -ErrorAction SilentlyContinue) {
-      Write-Warning -Message ('! File ' + $outputFilename + ' does already exist and will be overwritten.')
-    }
-            
+  if (Get-ChildItem -path $outputFilename -ErrorAction SilentlyContinue) {
+    Write-Warning -Message ('! File ' + $outputFilename + ' does already exist and will be overwritten.')
+  }
+
+
+  if ($pscmdlet.ShouldProcess('Export ' + $name + ' to ' + $outputFilename + ' with path encoding: ' + $objectInfo.path) ) {
     try {  
       $aeExportRequest = [com.uc4.communication.requests.ExportObject]::new($name, [java.io.file]::new($outputFilename))
       $aeConnection.sendRequest($aeExportRequest)
     }
     catch {
       Write-Warning -Message ('! AE export failure for ' + $name + ' this should not happen! Please report exception: ' + $aeExportRequest.getAllMessageBoxes())
-      $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result FAIL
-      return
-    }
-    
-    # The above often returns no error in case that invalid objects have been exported.
-    $msg = $aeExportRequest.getAllMessageBoxes()
-    if($msg) {
-      Write-Warning -Message ('! AE export failure for ' + $name + ': ' + $msg)
       $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -result FAIL
       return
     }
@@ -127,6 +124,7 @@ function Export-aeObject {
     # Finally return the information on the exported object      
     $resultSet += New-WFCObjectExportObject -name "$name" -type $objectInfo.type -path "$path" -file $outputFilename -result OK
     Write-Verbose -Message ('* Object ' + $name + ' has been exported successfully.')
+    }
   }
   
   end {
@@ -178,7 +176,7 @@ function Import-aeObject {
   param(
     [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
+    [Object]$aeConnection,
     [Parameter(ValueFromPipeline,HelpMessage='File or directory to import XMLs from.',ValueFromPipelineByPropertyName,Mandatory)]
     [AllowNull()]
     [Alias('directory')]
@@ -270,7 +268,7 @@ function Import-aeObject {
         }
       }
       catch {
-        Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $importRequest.getAllMessageBoxes())
+        Write-Warning -Message ('! Import of ' + $xmlFile.fullname + ' failed! AE says: ' + $importRequest.getAllMessageBoxes()  + ' ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
         $resultSet += New-WFCImportResult -name $identifiedName -path $identifiedPath -file $xmlFile -type $identifiedType -result FAIL
         return
       }

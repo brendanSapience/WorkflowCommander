@@ -1,10 +1,12 @@
 ﻿#########################################################################################
 # WorkflowCommander, copyrighted by Joel Wiesmann, 2016
-# 
-# Warm welcome to my code, whatever wisdom you try to find here.
+# <  THIS CODE IS EXPERIMENTAL  >
 #
-# This file is part of WorkflowCommander.
-# See http://www.binpress.com/license/view/l/9b201d0301d19b7bd87a3c7c6ae34bcd for full license details.
+# Get newest tipps and tricks on my blog:
+# http://workflowcommander.wordpress.com
+# ... or get in touch with me directly (joel.wiesmann <at> gmail <dot> com)
+# 
+# Read the LICENSE.txt provided with this software. GNU GPLv3
 #
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, 
 # INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -41,7 +43,7 @@ function Get-aeStatistic  {
       Get latest statistic entry only.
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       StatisticSearchItem items
@@ -110,7 +112,7 @@ function Search-aeStatistic  {
       x.
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       StatisticSearchItem items

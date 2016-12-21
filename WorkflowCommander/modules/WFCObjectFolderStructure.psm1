@@ -1,10 +1,12 @@
 ﻿#########################################################################################
 # WorkflowCommander, copyrighted by Joel Wiesmann, 2016
-# 
-# Warm welcome to my code, whatever wisdom you try to find here.
+# <  THIS CODE IS EXPERIMENTAL  >
 #
-# This file is part of WorkflowCommander.
-# See http://www.binpress.com/license/view/l/9b201d0301d19b7bd87a3c7c6ae34bcd for full license details.
+# Get newest tipps and tricks on my blog:
+# http://workflowcommander.wordpress.com
+# ... or get in touch with me directly (joel.wiesmann <at> gmail <dot> com)
+# 
+# Read the LICENSE.txt provided with this software. GNU GPLv3
 #
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, 
 # INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -35,7 +37,7 @@ function New-aeFolder  {
       Creates /PRODUCTION/SYSTEMA/FOLDER1. 
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       IFolder AE API Object.
@@ -44,7 +46,7 @@ function New-aeFolder  {
   param (
     [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
+    [Object]$aeConnection,
     [Parameter(Mandatory,HelpMessage='Path to create on AE server.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
     [string]$path
   )
@@ -129,7 +131,7 @@ function Get-aeFolder {
       Receive IFolder object.
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       IFolder.
@@ -137,7 +139,7 @@ function Get-aeFolder {
   param (
     [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
+    [Object]$aeConnection,
     [Parameter(Mandatory,HelpMessage='Name of the path to get.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
     [string]$path
   )
@@ -185,7 +187,7 @@ function Move-aeObject  {
       Creates /PRODUCTION/SYSTEMA/FOLDER1 (if necessary) and moves object.
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       Search result
@@ -194,7 +196,7 @@ function Move-aeObject  {
   param (
     [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
+    [Object]$aeConnection,
     [Parameter(Mandatory,HelpMessage='Name of object to move.',ValueFromPipeline,ValueFromPipelineByPropertyName)]
     [string]$name,
     [Parameter(Mandatory,HelpMessage='Path to move object to.',ValueFromPipelineByPropertyName)]
@@ -210,10 +212,14 @@ function Move-aeObject  {
     # Get object to relocate
     $object = Search-aeObject -aeConnection $aeConnection -name $name
     
+    if ($object.result -ne 'OK') {
+      Write-Warning ('! Object to move could not be found: ' + $name)
+      return
+    }
+    
     # If object is already at the correct place, stop here
     if ($object.path -eq $path) {
       Write-Verbose -Message ('* ' + $name + ' is already at target destination.')
-      $object.result = 'EMPTY'
       $resultSet += $object
       return
     }

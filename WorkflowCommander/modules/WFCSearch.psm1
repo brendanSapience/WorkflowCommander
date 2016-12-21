@@ -1,10 +1,12 @@
 ﻿#########################################################################################
 # WorkflowCommander, copyrighted by Joel Wiesmann, 2016
-# 
-# Warm welcome to my code, whatever wisdom you try to find here.
+# <  THIS CODE IS EXPERIMENTAL  >
 #
-# This file is part of WorkflowCommander.
-# See http://www.binpress.com/license/view/l/9b201d0301d19b7bd87a3c7c6ae34bcd for full license details.
+# Get newest tipps and tricks on my blog:
+# http://workflowcommander.wordpress.com
+# ... or get in touch with me directly (joel.wiesmann <at> gmail <dot> com)
+# 
+# Read the LICENSE.txt provided with this software. GNU GPLv3
 #
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, 
 # INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -60,7 +62,7 @@ function Search-aeObject {
       Searches for objects that name matches "*JOB*" and are stored below /PRODUCTION and are of type JOBS.
 
       .LINK
-      http://workflowcommander.blogspot.com
+      http://workflowcommander.wordpress.com
 
       .OUTPUTS
       Array of findings.
@@ -68,7 +70,7 @@ function Search-aeObject {
   Param(
     [Parameter(Mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]
-    [WFC.Core.WFCConnection]$aeConnection,
+    [Object]$aeConnection,
     [Parameter(ValueFromPipeline,ValueFromPipelineByPropertyName)]
     [string]$name = '*',
     [Parameter(ValueFromPipelineByPropertyName)]
@@ -204,7 +206,7 @@ function Search-aeObject {
       $aeConnection.sendRequest($search)
     }
     catch {
-      Write-Warning -message ('! Failed to query the AE: ' + $search.getAllMessageBoxes())
+      Write-Warning -message ('! Failed to query the AE: ' + $search.getAllMessageBoxes() + ' ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
       $resultSet += New-WFCEmptySearchResult -name "$name" -result FAIL
       return
     }
