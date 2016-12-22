@@ -19,30 +19,34 @@
 #########################################################################################
 
 # This is an internal cmdlet for the moment. Please do not use, it will change.
-function Get-aeObject {
-Param(
-  [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
-  [Alias('ae')]
-  [Object]$aeConnection,
-  [Parameter(ValueFromPipeline,HelpMessage='Name of object to get.',ValueFromPipelineByPropertyName,Mandatory)]
-  [string[]]$name
-)
+function Get-aeObject() {
+  Param(
+    [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
+    [Alias('ae')]
+    [Object]$aeConnection,
+    [Parameter(ValueFromPipeline,HelpMessage='Name of object to get.',ValueFromPipelineByPropertyName,Mandatory)]
+    [string]$name
+  )
   
-begin {
-  Write-Debug -Message '** Get-aeObject start'
-}
+  begin {
+    Write-Debug -Message '** Get-aeObject start'
+    $resultSet = @()
+  }
   
-process {
-  $objectRequest = [com.uc4.communication.requests.OpenObject]::new($name, $true, $true)
-  try {
-    $aeConnection.sendRequest($objectRequest)
+  process {
+    $objectRequest = [com.uc4.communication.requests.OpenObject]::new($name, $true, $true)
+    try {
+      $aeConnection.sendRequest($objectRequest)
+    }
+    catch {
+      Write-Warning -Message ('! Failed to query the AE: ' + $objectRequest.getAllMessageBoxes() + ' ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
+      return $null
+    }
+    $resultSet += $objectRequest
   }
-  catch {
-    Write-Warning -Message ('! Failed to query the AE: ' + $objectRequest.getAllMessageBoxes() + ' ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
-    return $null
-  }
-}
 
-end {
-  Write-Debug -Message '** Get-aeObject end'
+  end {
+    Write-Debug -Message '** Get-aeObject end'
+    return $resultSet
+  }
 }

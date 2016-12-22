@@ -1,0 +1,2 @@
+You can find the installation manual here:
+https://workflowcommander.wordpress.com/installation-manual/

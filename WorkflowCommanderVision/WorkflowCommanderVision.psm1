@@ -38,11 +38,18 @@ function set-shapeData() {
     return
   }
 
+  # If our taskdata contains a field i.e. "demo" and we have a field named "demo" in the visio stencil, 
+  # this field will receive the value of the according taskdata.
   if ($dataFieldCount -gt 0) {
       for ($fieldCount = 0; $fieldCount -lt $dataFieldCount; $fieldCount++) {
-          $dataRow = $shape.CellsSRC($visSectionProp, $fieldCount, $visCustPropsValue).name
-          $name = $shape.Cells($dataRow).RowNameU
+        $dataRow = $shape.CellsSRC($visSectionProp, $fieldCount, $visCustPropsValue).name
+        $name = $shape.Cells($dataRow).RowNameU
+        try {
           $shape.Cells($dataRow).Formula = [string]('"' + ($taskData.$name -replace '"', '') + '"')
+        }
+        catch {
+          Write-Warning -Message ('! Cannot set field named ' + $name)
+        }
       }
   }
 
@@ -73,12 +80,13 @@ function convert-dataToWorkflow() {
   )
 
   # Layout options making look the workflow like a workflow.
-  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLORouteStyle).FormulaForceU     = "6"
-  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineAdjustFrom).FormulaForceU = "1"
-  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineAdjustTo).FormulaForceU   = "2"
-  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineRouteExt).FormulaForceU   = "1"
+  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLORouteStyle).FormulaForceU     = '6'
+  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineAdjustFrom).FormulaForceU = '1'
+  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineAdjustTo).FormulaForceU   = '2'
+  $page.PageSheet.CellsSRC($visSectionObject, $visRowPageLayout, $visPLOLineRouteExt).FormulaForceU   = '1'
 
   $shapes = @{}
+  # Iterate through taskdata. Each record will result in one "box"
   write-verbose -message '* Drawing tasks...' 
   foreach ($task in $workflow.'taskData') {
     Write-Debug -Message '** Dropping task'
@@ -92,8 +100,11 @@ function convert-dataToWorkflow() {
     
     # Drop stencil onto page, use the x/y coordinates we get from the export.
     $shapes.($task.lnr) = $page.Drop($obj, ([int]$task.x * $xSpacing), $task.y * $ySpacing)
+    Write-Verbose -Message ('* Dropping shape for task lnr ' + $task.lnr + ' (' + $task.name + ')')
     set-shapeData -taskData $task -shape $shapes.($task.lnr)
   }
+  
+  # Now the same for relation. Each relation record is one connector between 2 task-shapes.
   Write-Verbose -Message '* Drawing relations'
   foreach ($relation in $workflow.'relData') {
     if (-not $relation.prelnr -or -not $relation.lnr) { continue }
@@ -110,6 +121,8 @@ function convert-dataToWorkflow() {
       write-warning -message('! Linking lnr: ' + $relation.lnr + ' with prelnr: ' + $relation.prelnr + ' failed.') 
     }
   }
+  
+  # Finally resize to fit contents so it looks pretty.
   $page.ResizeToFitContents()
 }
 
@@ -128,6 +141,7 @@ function save-drawing() {
   )
 
   # If we edited an existing VSD, we will use save(). For saving new VSDs, we use safeas() and for other file formats we have to export().
+  # This is basically such a simple thing but the various possibilities make it complex.
   if ($file.Extension -match '.vsd') {
     if ($file.Exists) {
       if ($document.save() -eq 0) { 
@@ -160,6 +174,56 @@ function save-drawing() {
 # Cmdlet for converting ae Workflows to Visio
 #################################################################################################################################################################
 function convert-aeWorkflowToVisio() {
+  <#
+      .SYNOPSIS
+      Convert an AE workflow to a Visio representation.
+
+      .DESCRIPTION
+      This cmdlet allows you to export an AE workflow to either Visio VSD or any supported export format (JPG, PNG, etc.). As a datasource
+      you can either use CSV files exported by a SQL query or you can use a WFC::Core connection to directly get the data from the AE.
+
+      .PARAMETER file
+      Where to write the output to. This can be a folder or file. If folder is specified, the file will be named like the workflow, so if
+      multiple workflows are converted, each one will get it's own file.
+
+      .PARAMETER extension
+      When working with an output folder, the extension defines the ending of the files. All supported Visio formats can be specified here.
+
+      .PARAMETER stencilFile
+      Stencil file to use. You can do a stencil on your own - just name the shapes like the AE types (JOBP, JOBF... + a default)
+
+      .PARAMETER xSpacing
+      Multiplier for spacing between shapes on x axis. The higher the more space inbetween shapes.
+
+      .PARAMETER ySpacing
+      Multiplier for spacing between shapes on y axis. The higher the more space inbetween shapes.
+
+      .PARAMETER visioVisible
+      If set to $true, you can watch Visio building the workflow.
+
+      .PARAMETER name
+      If data should be gathered form the AE - name of the workflow.
+
+      .PARAMETER aeConnection
+      If data should be gathered form the AE - WFC::Core connection to get the object from.
+
+      .PARAMETER csvTaskDataFile
+      CSV backend file containing the task definition. See https://workflowcommander.wordpress.com. 
+
+      .PARAMETER csvRelDataFile
+      CSV backend file containing the task definition. See manual.
+
+      .EXAMPLE
+      convert-aeWorkflowToVisio -file c:\temp\dmo.vsd -ae $ae -name "MY.JOBP"
+      Gets the workflow MY.JOBP by using WFC::Core connection $ae and charts it into c:\temp\dmo.vsd.
+
+      .EXAMPLE
+      search-aeObject -ae $ae -type JOBP | convert-aeWorkflowToVisio -ae $ae -file c:\temp\ -extension jpg
+      Search for all JOBP objects and chart them to c:\temp. Each workflow gets an own file of type jpg.
+
+      .NOTES
+      See Philipp Elmer's article on Workflow Vision https://www.philippelmer.com/gastbeitrag-mit-workflow-vision/
+  #>
 
   param(
     [Alias('folder')]
@@ -185,16 +249,20 @@ function convert-aeWorkflowToVisio() {
   )
 
   Begin {
-    # Multidimensional table holds all data to draw
+    # Multidimensional table holds all data to draw. The format is:
+    # $workflows.<workflowname>
+    #                          .'taskdata' = Hash array with minimum keys lnr, x, y, type
+    #                          .'reldata'  = Hash array with minimum keys prelnr, lnr
     $workflows = @{}
   }
 
   Process {
-    # Taskdata: lnr,x,y,name,description
-    # Reldata:  lnr,prelnr
+    # Prepare data structure
     $workflows.$name = @{}
     $taskData = @()
     $relData = @()
+
+    # The data source gathering could be separated into subfunctions, but I'm too lazy for the moment to do so.
 
     #################################################################################################################################################################
     # Load data from export file
@@ -218,20 +286,26 @@ function convert-aeWorkflowToVisio() {
       $aeObject = Get-aeObject -aeConnection $aeConnection -name $name
 
       if ($aeObject.getType() -ne 'JOBP') {
-        Write-Warning -Message ('! ' + $name + ' is not of type JOBP!')
+        Write-Warning -Message ('! ' + $name + ' is not existing or not of type JOBP!')
+        $workflows.Remove($name)
         return
       }
 
       $tasks = $aeObject.getUC4Object().taskIterator()
       while ($tasks.hasnext()) {
         $task = $tasks.next()
-
+        
+        # For some strange reason this seems not to work. Might be an API issue to be analysed later..
+        # if ($task.isInactive()) { $inact = 0 } else { $inact = 1 }
+        
         $taskData += @{
             'lnr'         = $task.getLnr()
             'name'        = $task.getTaskName()
             'description' = $task.getTaskTitle()
             'x'           = $task.getX()
             'y'           = $task.getY()
+            'agent'       = $task.getHostName()
+            'type'        = $task.getType()
         }
 
         $dependencies = $task.dependencies().iterator()
@@ -251,6 +325,7 @@ function convert-aeWorkflowToVisio() {
       $task.Y = ($task.Y - $maxYvalue) * -1
     }
 
+    # Assign data and proceed with next...
     $workflows.$name.'taskData' = $taskData
     $workflows.$name.'relData'  = $relData
   }
@@ -305,11 +380,12 @@ function convert-aeWorkflowToVisio() {
         $visioFormat = $true
       }
 
-      # If output format is vsd AND the output file is already existing, the documentation might be added to the existing tab or the existing page gets replaced.
+      # If output format is vsd AND the output file is already existing, the documentation might be added to the existing tab 
+      # or the existing page gets replaced.
       if ($visioFormat -and $file.Exists) {
         try { $document = $documents.Open($file.FullName) }
         catch {
-          write-host ('! Could not open visio file for writing. It is likely that the file is already opened. Please kill all open visio processes and try again.')
+          write-warning -Message ('! Could not open visio file for writing. It is likely that the file is already opened. Please kill all open visio processes and try again.')
           $application.quit()
           exit 1
         }
@@ -329,7 +405,7 @@ function convert-aeWorkflowToVisio() {
         }
       }
 
-      $page      = $document.Pages.Add()
+      $page = $document.Pages.Add()
       
       if ($del) {
         write-verbose -message '* Deleting existing page with same pagename for recreation.'
@@ -356,7 +432,7 @@ function convert-aeWorkflowToVisio() {
     # Finalize / shutdown
     #################################################################################################################################################################
     # This might be the case if we write 1x workflow into 1x file or multiple workflows into a VSD file
-    if (! $outputToFolder) {
+    if (! $outputToFolder -and $page) {
       save-drawing -document $document -page $page -file $file
       $document.saved = $true
       $document.close()
