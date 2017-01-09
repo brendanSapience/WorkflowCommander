@@ -147,9 +147,9 @@ function new-aeConnection {
   Write-Warning '!   THIS SOFTWARE IS EXPERIMENTAL - READ THE LICENSE   !'
   Write-Warning '! Have fun, but be careful and know what you are doing !'
   Write-Warning '========================================================'
-  Write-Warning 'Tipp #1: Use -verbose switch for extended output or set $ErrorActionPreference to continue.'
-  Write-Warning 'Tipp #2: Use -whatif switch to simulate importing & exporting objects.'
-  Write-Warning '> For more information, visit http://workflowcommander.wordpress.com'
+  Write-Warning '* Use -verbose switch for extended output or set $ErrorActionPreference to continue.'
+  Write-Warning '* Use -whatif switch to simulate importing & exporting objects.'
+  Write-Warning '> For more information, visit https://github.com/JoelWiesmann/WorkflowCommander'
   write-warning '> Send feedback to joel.wiesmann@gmail.com'
   
   # TODO: This is just a beta implementation. Do not use in your scripts as it should return an object. 
