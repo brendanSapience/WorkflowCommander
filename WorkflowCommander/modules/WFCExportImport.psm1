@@ -1,9 +1,8 @@
 ﻿#########################################################################################
-# WorkflowCommander, copyrighted by Joel Wiesmann, 2016
+# WorkflowCommander, copyrighted by Joel Wiesmann, 2017
 # <  THIS CODE IS EXPERIMENTAL  >
 #
-# Get newest tipps and tricks on my blog:
-# http://workflowcommander.wordpress.com
+# https://github.com/JoelWiesmann/WorkflowCommander
 # ... or get in touch with me directly (joel.wiesmann <at> gmail <dot> com)
 # 
 # Read the LICENSE.txt provided with this software. GNU GPLv3
