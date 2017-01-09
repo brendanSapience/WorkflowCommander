@@ -2,4 +2,4 @@ You can find the installation manual here:
 https://workflowcommander.wordpress.com/installation-manual/
 
 How to use the tool is described here:
-https://workflowcommander.wordpress.com/quickstart/
+https://workflowcommander.wordpress.com/quickstart-wfcvision/

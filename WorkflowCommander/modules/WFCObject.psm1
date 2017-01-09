@@ -19,7 +19,7 @@
 #########################################################################################
 
 # Returned after an object export request. This object type is also used for -showNoExport
-function New-WFCObjectExportObject {
+function new-WFCObjectExportObject {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
@@ -46,7 +46,7 @@ function New-WFCObjectExportObject {
 }
 
 # For empty com.uc4.api.StatisticSearchItem
-function New-WFCEmptyStatisticResult {
+function new-WFCEmptyStatisticResult {
   param(
     [AllowEmptyString()]
     [Parameter(Mandatory,HelpMessage='AE object name')]
@@ -68,7 +68,7 @@ function New-WFCEmptyStatisticResult {
 }
 
 # As we cannot create an empty com.uc4.api.SearchResultItem we create an own type.
-function New-WFCEmptySearchResult {
+function new-WFCEmptySearchResult {
   param(
     [Parameter(Mandatory,HelpMessage='AE object name')]
     [string]$name,
@@ -91,7 +91,7 @@ function New-WFCEmptySearchResult {
 
 # To identify whether an import was successful or not, we return all imported objects. This type can also be
 # used to identify a failed import with an UNDEF type.
-function New-WFCImportResult {
+function new-WFCImportResult {
   param(
     [AllowEmptyString()]
     [Parameter(Mandatory,HelpMessage='AE object name')]

@@ -19,7 +19,7 @@
 #########################################################################################
 
 # This is an internal cmdlet for the moment. Please do not use, it will change.
-function Get-aeObject() {
+function get-aeObject() {
   Param(
     [Parameter(mandatory,HelpMessage='AE connection object returned by new-aeConnection.')]
     [Alias('ae')]

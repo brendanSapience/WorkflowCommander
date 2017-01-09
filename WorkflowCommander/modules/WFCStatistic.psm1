@@ -18,7 +18,7 @@
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
 
-function Get-aeStatistic  {
+function get-aeStatistic  {
   <#
       .SYNOPSIS
       Get statistic of a single object.
@@ -93,7 +93,7 @@ function Get-aeStatistic  {
   }
 }
 
-function Search-aeStatistic  {
+function search-aeStatistic  {
   <#
       .SYNOPSIS
       Search for statistic entries.

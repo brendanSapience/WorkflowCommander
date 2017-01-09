@@ -17,7 +17,7 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
-function Export-aeObject {
+function export-aeObject {
 <#
     .SYNOPSIS
     Export a object to an XML file.
@@ -141,7 +141,7 @@ process {
   }
 }
 
-function Import-aeObject {
+function import-aeObject {
   <#
       .SYNOPSIS
       Import a single XML or a directory containing multiple XML files.

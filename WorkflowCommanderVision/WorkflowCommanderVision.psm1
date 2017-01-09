@@ -173,14 +173,151 @@ function save-drawing() {
 #################################################################################################################################################################
 # Cmdlet for converting ae Workflows to Visio
 #################################################################################################################################################################
+
+function get-aeVisionData() {
+  <#
+      .SYNOPSIS
+      Convert either SQL data dumps to visionData array // get data directly from AE to produce visionData.
+
+      .DESCRIPTION
+      WFC::Vision has a very own data format it expects to draw the workflow. This format is being created by this
+      cmdlet either out of a task & relation file or based on AE data.
+
+      .PARAMETER name
+      If data should be gathered form the AE - name of the workflow.
+
+      .PARAMETER aeConnection
+      If data should be gathered form the AE - WFC::Core connection to get the object from.
+
+      .PARAMETER csvTaskDataFile
+      CSV backend file containing the task definition. See https://workflowcommander.wordpress.com. 
+
+      .PARAMETER csvRelDataFile
+      CSV backend file containing the task definition. See manual.
+
+      .EXAMPLE
+      get-aeVisionData -ae $ae -name JOELS_WORKFLOW
+      Get the workflow JOELS_WORKFLOW in Vision-compatible format. Can be piped to convert-aeWorkflowToVisio.
+
+      .NOTES
+      See Philipp Elmer's article on Workflow Vision https://www.philippelmer.com/gastbeitrag-mit-workflow-vision/
+  #>
+
+  param(
+    [Parameter(ParameterSetName='fromFile')]
+    [Parameter(ParameterSetName='WFC',ValueFromPipeline,ValueFromPipelineByPropertyName,HelpMessage='Workflow object name to load and convert',Mandatory)]
+    [string]$name,
+    # WorkflowCommander support
+    [Alias('ae')]
+    [Parameter(ParameterSetName='WFC',Mandatory)]
+    [Object]$aeConnection,
+    # This works like the original "Workflow Visio(n)"
+    [Parameter(ParameterSetName='fromFile',Mandatory)]
+    [IO.FileInfo]$csvTaskDataFile,
+    [Parameter(ParameterSetName='fromFile',Mandatory)]
+    [IO.FileInfo]$csvRelDataFile
+  )
+  
+  Begin {
+    # Multidimensional table ($visionData) holds all data that is required to draw. Because we create an interim data array we can 
+    # very easily mutate data before we convert it.
+    # The format is:
+    # $workflows.<workflowname>
+    #                          .'taskdata' = Hash array with minimum keys lnr, x, y, type
+    #                          .'reldata'  = Hash array with minimum keys prelnr, lnr
+    $workflows = @{}
+  }
+
+  Process {
+    # Prepare data structure
+    $workflows.$name = @{}
+    $taskData = @()
+    $relData = @()
+
+    #################################################################################################################################################################
+    # Load data from export file
+    #################################################################################################################################################################
+    if ($PSCmdlet.ParameterSetName -eq 'fromFile') {
+      Write-Verbose -Message '* Loading data from file...'
+      # Load / verify the workflow data 
+      try {
+        $taskData = ConvertFrom-Csv (Get-Content -Path $csvTaskDataFile) -Delimiter ';'
+        $relData  = ConvertFrom-Csv (Get-Content -Path $csvRelDataFile)  -Delimiter ';'
+      }
+      catch {
+        Write-Warning -Message ('! Issues loading data (' + $_.Exception.Message + ').')
+        return
+      }
+    }
+    
+    #################################################################################################################################################################
+    # Get data from Automation Engine
+    #################################################################################################################################################################
+    if ($PSCmdlet.ParameterSetName -eq 'WFC') {
+      Write-Verbose -Message ('* Getting ' + $name + ' workflow data...')
+      $aeObject = Get-aeObject -aeConnection $aeConnection -name $name
+
+      if ($aeObject.getType() -ne 'JOBP') {
+        Write-Warning -Message ('! ' + $name + ' is not existing or not of type JOBP!')
+        $workflows.Remove($name)
+        return
+      }
+
+      $tasks = $aeObject.getUC4Object().taskIterator()
+      while ($tasks.hasnext()) {
+        Write-Debug -Message '* And another task...'
+        $task = $tasks.next()
+        
+        # For some strange reason this seems not to work. Might be an API issue to be analysed later..
+        # if ($task.isInactive()) { $inact = 0 } else { $inact = 1 }
+        
+        $taskData += @{
+          'lnr'         = $task.getLnr()
+          'name'        = $task.getTaskName()
+          'description' = $task.getTaskTitle()
+          'x'           = $task.getX()
+          'y'           = $task.getY()
+          'data'        = ''
+          'agent'       = $task.getHostName()
+          'type'        = $task.getType()
+        }
+
+        $dependencies = $task.dependencies().iterator()
+        while ($dependencies.hasNext()) {
+          $dependency = $dependencies.next()
+          $relData += @{
+            'lnr'    = $task.getLnr()
+            'preLnr' = $dependency.getTask().getLnr()
+          }
+        }
+      }
+    }
+
+    # Mirror the Y-axis in the task specification
+    $maxYvalue = ($taskData.GetEnumerator() | Sort-Object -Property Y -Descending | Select-Object -First 1).Y
+    foreach ($task in $taskData) {
+      $task.Y = ($task.Y - $maxYvalue) * -1
+    }
+
+    # Assign data and proceed with next...
+    $workflows.$name.'taskData' = $taskData
+    $workflows.$name.'relData'  = $relData
+  }
+
+  End {
+    return $workflows
+  }
+}
 function convert-aeWorkflowToVisio() {
   <#
       .SYNOPSIS
-      Convert an AE workflow to a Visio representation.
+      Convert an AE Vision Data Array to a Visio representation.
 
       .DESCRIPTION
-      This cmdlet allows you to export an AE workflow to either Visio VSD or any supported export format (JPG, PNG, etc.). As a datasource
-      you can either use CSV files exported by a SQL query or you can use a WFC::Core connection to directly get the data from the AE.
+      This cmdlet allows you to export an AE workflow to either Visio VSD or any supported export format (JPG, PNG, etc.).
+
+      .PARAMETER visionData
+      Array that contains the visionData. Might also be piped from get-aeVisionData
 
       .PARAMETER file
       Where to write the output to. This can be a folder or file. If folder is specified, the file will be named like the workflow, so if
@@ -201,25 +338,9 @@ function convert-aeWorkflowToVisio() {
       .PARAMETER visioVisible
       If set to $true, you can watch Visio building the workflow.
 
-      .PARAMETER name
-      If data should be gathered form the AE - name of the workflow.
-
-      .PARAMETER aeConnection
-      If data should be gathered form the AE - WFC::Core connection to get the object from.
-
-      .PARAMETER csvTaskDataFile
-      CSV backend file containing the task definition. See https://workflowcommander.wordpress.com. 
-
-      .PARAMETER csvRelDataFile
-      CSV backend file containing the task definition. See manual.
-
       .EXAMPLE
-      convert-aeWorkflowToVisio -file c:\temp\dmo.vsd -ae $ae -name "MY.JOBP"
-      Gets the workflow MY.JOBP by using WFC::Core connection $ae and charts it into c:\temp\dmo.vsd.
-
-      .EXAMPLE
-      search-aeObject -ae $ae -type JOBP | convert-aeWorkflowToVisio -ae $ae -file c:\temp\ -extension jpg
-      Search for all JOBP objects and chart them to c:\temp. Each workflow gets an own file of type jpg.
+      search-aeObject -ae $ae -type jobp | get-aeVisionData -ae $ae | convert-aeWorkflowToVisio -file c:\temp\demo.vsd
+      Gets all workflows on $ae using WFC::Core connection $ae and charts them into c:\temp\dmo.vsd.
 
       .NOTES
       See Philipp Elmer's article on Workflow Vision https://www.philippelmer.com/gastbeitrag-mit-workflow-vision/
@@ -229,217 +350,116 @@ function convert-aeWorkflowToVisio() {
     [Alias('folder')]
     [Parameter(Mandatory,HelpMessage='Output file or folder')]
     [IO.FileInfo]$file,
+    [Parameter(Mandatory,ValueFromPipeline,HelpMessage='Array containing data to draw')]
+    [Hashtable[]]$visionData,
     [String]$extension = 'vsd',
     [IO.FileInfo]$stencilFile = (([IO.FileInfo](Get-Module WorkflowCommanderVision).path).Directory.ToString() + '\data\default.vss'),
     [double]$xSpacing = 2.5,
     [double]$ySpacing = 1.5,
-    [bool]$visioVisible = $false,
-    [Parameter(ParameterSetName=’fromFile’)]
-    [Parameter(ParameterSetName=’WFC’,ValueFromPipeline,ValueFromPipelineByPropertyName,HelpMessage='Workflow object name to load and convert',Mandatory)]
-    [string]$name,
-    # WorkflowCommander support
-    [Alias('ae')]
-    [Parameter(ParameterSetName='WFC',Mandatory)]
-    [Object]$aeConnection,
-    # This works like the original "Workflow Visio(n)"
-    [Parameter(ParameterSetName=’fromFile’,Mandatory)]
-    [IO.FileInfo]$csvTaskDataFile,
-    [Parameter(ParameterSetName=’fromFile’,Mandatory)]
-    [IO.FileInfo]$csvRelDataFile
+    [bool]$visioVisible = $false
   )
 
-  Begin {
-    # Multidimensional table holds all data to draw. The format is:
-    # $workflows.<workflowname>
-    #                          .'taskdata' = Hash array with minimum keys lnr, x, y, type
-    #                          .'reldata'  = Hash array with minimum keys prelnr, lnr
-    $workflows = @{}
+  #################################################################################################################################################################
+  # Initialize Visio and preload stencils
+  #################################################################################################################################################################
+  try {
+    $application = New-Object -ComObject Visio.Application
+    $application.visible = $visioVisible
+    $documents = $application.Documents
+    
+    # Load the mastershapes from the stencil
+    $mastershapes = @{}
+    $objectStencil = $application.Documents.Add($stencilFile)
+    foreach ($stencil in $Objectstencil.Masters) {
+      $mastershapes.($stencil.name) = $stencil
+    }
+  
+    if (! $mastershapes.'default') {
+      Write-Warning -Message ('! ' + $stencilFile + ' does not contain a "default" mastershape.')
+    }
+  
+    if (! $mastershapes.'connector') {
+      Write-Warning -Message ('! ' + $stencilFile + ' does not contain a "connector" mastershape.')
+    }
   }
+  catch {
+    Write-Warning -Message ('! Could not initialize Visio (' + $_.Exception.Message + ').')
+    exit 1
+  }
+  
+  # Outputfile might be a folder or a file. In case that it's a folder we will export one file per workflow
+  if ((Get-Item -path $file -ErrorAction SilentlyContinue) -is [System.IO.DirectoryInfo]) {
+    $outputToFolder = $file
+  }
+  
+  #################################################################################################################################################################
+  # Visualize
+  #################################################################################################################################################################
+  # There is a lot of Visio document/page management ongoing here. This is because of the various possibilities to save the files.
+  # Visio must be managed differently whether you're exporting to other formats or create additional drawings within the same 
+  # VSD document.
+  foreach ($workflow in $visionData.keys) {
+    Write-Verbose -Message ('* Processing ' + $workflow)
 
-  Process {
-    # Prepare data structure
-    $workflows.$name = @{}
-    $taskData = @()
-    $relData = @()
-
-    # The data source gathering could be separated into subfunctions, but I'm too lazy for the moment to do so.
-
-    #################################################################################################################################################################
-    # Load data from export file
-    #################################################################################################################################################################
-    if ($PSCmdlet.ParameterSetName -eq 'fromFile') {
-      # Load / verify the workflow data 
-      try {
-        $taskData = ConvertFrom-Csv (Get-Content -Path $csvTaskDataFile) -Delimiter ';'
-        $relData  = ConvertFrom-Csv (Get-Content -Path $csvRelDataFile)  -Delimiter ';'
-      }
+    # In case we output to a folder, we need to determine the final filename
+    if ($outputToFolder) {
+      $file = ($outputToFolder.FullName + '/' + $workflow + '.' + $extension)
+    }
+  
+    if ($file.extension -eq '.vsd' -or $extension -match 'vsd') {
+      $visioFormat = $true
+    }
+  
+    # If output format is vsd AND the output file is already existing, the documentation might be added to the existing tab 
+    # or the existing page gets replaced.
+    $file.refresh()
+    if ($visioFormat -and $file.Exists) {
+      try { $document = $documents.Open($file.FullName) }
       catch {
-        Write-Warning -Message ('! Issues loading data (' + $_.Exception.Message + ').')
-        return
+        write-warning -Message ('! Could not open visio file for writing. It is likely that the file is already opened. Please kill all open visio processes and try again.')
+        $application.quit()
+        exit 1
       }
     }
+    else {
+      # Create new document and delete the empty default page.
+      $document = $documents.Add('') 
+      $removeFirst = $true
+    }
+  
+    # If our Visio document already contains a tab named as the workflow we're going to create, we need to remove the tab and recreate the content.
+    # The problem is, that if there is only one tab at all in the document, the removal of the tab will automatically create a new page. So we first
+    # detect if there is something to delete and if so, we will finally delete the page after we created the new one.
+    for ($pageNumber = 1; $pageNumber -le $document.Pages.count; $pageNumber++) {
+      if ($document.pages.item($pageNumber).NameU -eq [string]$workflow) {
+        $del = $pageNumber
+      }
+    }
+
+    $page = $document.Pages.Add()
     
-    #################################################################################################################################################################
-    # Get data from Automation Engine
-    #################################################################################################################################################################
-    if ($PSCmdlet.ParameterSetName -eq 'WFC') {
-      $aeObject = Get-aeObject -aeConnection $aeConnection -name $name
-
-      if ($aeObject.getType() -ne 'JOBP') {
-        Write-Warning -Message ('! ' + $name + ' is not existing or not of type JOBP!')
-        $workflows.Remove($name)
-        return
-      }
-
-      $tasks = $aeObject.getUC4Object().taskIterator()
-      while ($tasks.hasnext()) {
-        $task = $tasks.next()
-        
-        # For some strange reason this seems not to work. Might be an API issue to be analysed later..
-        # if ($task.isInactive()) { $inact = 0 } else { $inact = 1 }
-        
-        $taskData += @{
-            'lnr'         = $task.getLnr()
-            'name'        = $task.getTaskName()
-            'description' = $task.getTaskTitle()
-            'x'           = $task.getX()
-            'y'           = $task.getY()
-            'agent'       = $task.getHostName()
-            'type'        = $task.getType()
-        }
-
-        $dependencies = $task.dependencies().iterator()
-        while ($dependencies.hasNext()) {
-          $dependency = $dependencies.next()
-          $relData += @{
-              'lnr'    = $task.getLnr()
-              'preLnr' = $dependency.getTask().getLnr()
-          }
-        }
-      }
+    if ($del) {
+      write-verbose -message '* Deleting existing page with same pagename for recreation.'
+      $document.pages.item($del).delete(1)
     }
-
-    # Mirror the Y-axis in the task specification
-    $maxYvalue = ($taskData.GetEnumerator() | Sort-Object -Property Y -Descending | Select-Object -First 1).Y
-    foreach ($task in $taskData) {
-      $task.Y = ($task.Y - $maxYvalue) * -1
+    $page.name = [string]$workflow
+  
+    # Fill page with content
+    convert-dataToWorkflow -page $page -mastershapes $mastershapes -workflow $visionData.$workflow -xSpacing $xspacing -ySpacing $ySpacing
+  
+    if ($removeFirst) {
+      $document.pages.item(1).delete(1) 
     }
-
-    # Assign data and proceed with next...
-    $workflows.$name.'taskData' = $taskData
-    $workflows.$name.'relData'  = $relData
+     
+    save-drawing -document $document -page $page -file $file
+    $document.saved = $true
+    $document.close()
   }
-
-  End {
-    #################################################################################################################################################################
-    # Initialize Visio and preload stencils
-    #################################################################################################################################################################
-    try {
-      $application = New-Object -ComObject Visio.Application
-      $application.visible = $visioVisible
-      $documents = $application.Documents
-      
-      # Load the mastershapes from the stencil
-      $mastershapes = @{}
-      $objectStencil = $application.Documents.Add($stencilFile)
-      foreach ($stencil in $Objectstencil.Masters) {
-        $mastershapes.($stencil.name) = $stencil
-      }
-
-      if (! $mastershapes.'default') {
-        Write-Warning -Message ('! ' + $stencilFile + ' does not contain a "default" mastershape.')
-      }
-
-      if (! $mastershapes.'connector') {
-        Write-Warning -Message ('! ' + $stencilFile + ' does not contain a "connector" mastershape.')
-      }
-    }
-    catch {
-      Write-Warning -Message ('! Could not initialize Visio (' + $_.Exception.Message + ').')
-      exit 1
-    }
-    
-    # Outputfile might be a folder or a file. In case that it's a folder we will export one file per workflow
-    if ((Get-Item -path $file -ErrorAction SilentlyContinue) -is [System.IO.DirectoryInfo]) {
-      $outputToFolder = $file
-    }
-    
-    #################################################################################################################################################################
-    # Visualize
-    #################################################################################################################################################################
-    # There is a lot of Visio document/page management ongoing here. This is because of the various possibilities to save the files.
-    # Visio must be managed differently whether you're exporting to other formats or create additional drawings within the same 
-    # VSD document.
-    foreach ($workflow in $workflows.keys) {
-      # In case we output to a folder, we need to determine the final filename
-      if ($outputToFolder) {
-        $file = ($outputToFolder.FullName + '/' + $workflow + '.' + $extension)
-      }
-
-      if ($file.extension -eq '.vsd' -or $extension -match 'vsd') {
-        $visioFormat = $true
-      }
-
-      # If output format is vsd AND the output file is already existing, the documentation might be added to the existing tab 
-      # or the existing page gets replaced.
-      if ($visioFormat -and $file.Exists) {
-        try { $document = $documents.Open($file.FullName) }
-        catch {
-          write-warning -Message ('! Could not open visio file for writing. It is likely that the file is already opened. Please kill all open visio processes and try again.')
-          $application.quit()
-          exit 1
-        }
-      }
-      else {
-        # Create new document and delete the empty default page.
-        $document = $documents.Add('') 
-        $removeFirst = $true
-      }
-
-      # If our Visio document already contains a tab named as the workflow we're going to create, we need to remove the tab and recreate the content.
-      # The problem is, that if there is only one tab at all in the document, the removal of the tab will automatically create a new page. So we first
-      # detect if there is something to delete and if so, we will finally delete the page after we created the new one.
-      for ($pageNumber = 1; $pageNumber -le $document.Pages.count; $pageNumber++) {
-        if ($document.pages.item($pageNumber).NameU -eq [string]$workflow) {
-          $del = $pageNumber
-        }
-      }
-
-      $page = $document.Pages.Add()
-      
-      if ($del) {
-        write-verbose -message '* Deleting existing page with same pagename for recreation.'
-        $document.pages.item($del).delete(1)
-      }
-      $page.name = [string]$workflow
-
-      # Fill page with content
-      convert-dataToWorkflow -page $page -mastershapes $mastershapes -workflow $workflows.$workflow -xSpacing $xspacing -ySpacing $ySpacing
-
-      if ($removeFirst) {
-        $document.pages.item(1).delete(1) 
-      }
-      
-      # If we output to folder, we restart from scratch every time
-      if ($outputToFolder) {
-        save-drawing -document $document -page $page -file $file
-        $document.saved = $true
-        $document.close()
-      }
-    }
-
-    #################################################################################################################################################################
-    # Finalize / shutdown
-    #################################################################################################################################################################
-    # This might be the case if we write 1x workflow into 1x file or multiple workflows into a VSD file
-    if (! $outputToFolder -and $page) {
-      save-drawing -document $document -page $page -file $file
-      $document.saved = $true
-      $document.close()
-    }
-
-    # Properly close Visio or there will be hanging processes.
-    $objectStencil.saved = $true
-    $application.quit()
-  }
+  
+  #################################################################################################################################################################
+  # Finalize / shutdown
+  #################################################################################################################################################################  
+  # Properly close Visio or there will be hanging processes.
+  $objectStencil.saved = $true
+  $application.quit()
 }

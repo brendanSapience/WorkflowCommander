@@ -18,7 +18,7 @@
 # WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #########################################################################################
 
-function New-aeFolder  {
+function new-aeFolder  {
   <#
       .SYNOPSIS
       Create folder(s) on AE system. Works recursively.
@@ -112,7 +112,7 @@ function New-aeFolder  {
   }
 }
 
-function Get-aeFolder {
+function get-aeFolder {
   <#
       .SYNOPSIS
       Receive a iFolder object representing a folder. 
@@ -168,7 +168,7 @@ function Get-aeFolder {
   }
 
 }
-function Move-aeObject  {
+function move-aeObject  {
   <#
       .SYNOPSIS
       Move object to folder.
