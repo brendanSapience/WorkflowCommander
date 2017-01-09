@@ -1,3 +1,7 @@
+WorkflowCommander provides Powershell cmdlets for The [Automic Automation Engine](http://www.automic.com). Use at your own risk!
+
+Feel free to send feedback to joel.wiesmann at gmail.com / use the issue tracking or add me on [XING](https://www.xing.com/profile/Joel_Wiesmann).
+
 # Installation
 Precondition:
 * one or more AE 10+ systems you can connect to from your workstation
@@ -19,14 +23,19 @@ Get-Module -name WorkflowCommander
 Get-Module -name WorkflowCommanderVision
 ``` 
 
-# WorkflowCommander (WFC::CORE)
-## Some very basic things to begin
+# WorkflowCommander (WFC::Core)
+WFC::Core module is required to access the AE and do basic stuff. It's the "Core" module of all further WFC products providing the very basics.
+
+## Results of WFC::Core cmdlets
 Commands usually return result objects. Those contain a property named "result" that may contain the following string:
 * *EMPTY* (i.e. object not found, no statistic entry found)
 * *OK* (i.e. import was successful, object was found)
 * *FAIL* (i.e. export failed, any kind of connection issues)
 
-Now enjoy the examples. They will help you to get into this useful set of cmdlets.
+So if you search for an object that does not exist, you will receive an EMPTY record. This is useful if you search for a list of objects as you will get an EMPTY record for each one that is not available. You can easily filter those by piping the result of the commandlet through a filter:
+```powershell
+search-aeObject -ae $ae -name MRNOBODY | ? { $_.RESULT -eq "OK" }
+```
 
 ## Connecting and disconnecting
 ```powershell
@@ -141,7 +150,7 @@ Create folder with subfolders:
 new-aeFolder -ae $ae -path /MY/FOLDER/AND/SUB/FOLDERS
 ```
 
-# WorkflowCommanderVision (WFC::VISION)
+# WorkflowCommanderVision (WFC::Vision)
 
 Convert a workflow to Visio
 ```powershell
@@ -149,12 +158,10 @@ $ae = new-aeConnection -profile myAEConnectionProfile
 get-aeVisionData -ae $ae -name JOELS_WORKFLOW | convert-aeWorkflowToVisio -file c:\temp\demo.vsd
 ```
 
-Wow. That was simple. So why not having JPGs of all workflows below an AE-folder? 
+Wow. That was shockingly easy (if it worked :)). So why not having JPGs of all workflows below an AE-folder? 
 ```powershell
 search-aeObject -ae $ae -path /FOLDER -type JOBP | get-aeVisionData -ae $ae | convert-aeWorkflowToVisio -file c:\temp\ -extension jpg
 ```
 
 You can also use the Workflow Visio(n) dumps you might know from [Philipp Elmers Blog](http://philippelmer.com/automicblog/)
-
-That's it for the beginning folks. Feel free to send feedback to joel.wiesmann at gmail.com or add me on XING.
 
