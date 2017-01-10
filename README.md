@@ -12,9 +12,12 @@ To install the modules:
 - Download / git clone this repository (you basically need the WorkflowCommander* folder contents).
 - Download the Automic AE GUI Client for AE V12 (for AE V10 you must download the AE V11.2 client).
 - Search for an "Automic.dll" file and copy it into the WorkflowCommander/lib directory
-- Start a PowerShell session and move (or copy) the WorkflowCommander directories to the Powershell module folder:
+- Start a PowerShell session and move (or copy) the WorkflowCommander directories to the Powershell module folder to install it permanently OR for a temporary test use import-module on the folder:
 ```powershell
 move-item c:\temp\WorkflowCommander* $HOME\Documents\WindowsPowerShell\Modules
+# OR
+import-module c:\temp\WorkflowCommander
+import-module c:\temp\WorkflowCommanderVision
 ```
 
 To verify installation, this command should return the module information. If nothing comes back, check out google for Powershell Module installation.
