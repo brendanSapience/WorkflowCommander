@@ -218,7 +218,9 @@ function search-aeObject {
     else {
       $searchIterator = $search.resultIterator()
       while ($searchIterator.hasNext()) {
-        $resultSet += $searchIterator.next()
+        $searchResult = $searchIterator.next()
+        $searchResult | Add-Member -Type NoteProperty -Name result -Value "OK"
+        $resultSet += $searchResult
       }
     }
   }

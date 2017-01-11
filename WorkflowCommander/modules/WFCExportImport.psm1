@@ -215,7 +215,7 @@ function import-aeObject {
     
     foreach ($xmlFile in $file) {
       Write-Debug -Message ('Processing ' + $xmlFile)
-      # The path defines, in what folder structure the object should be stored into. This information can be inputted with 3 methods:
+      # The path defines, in what folder structure the object should be stored into. This information can be inputted with 2 methods:
       # 1. as -path parameter to import-aeObject
       # 2. encoded into the XML object as WorkflowCommander:aeObjectPath attribute to uc-name XML element
       try {
@@ -234,9 +234,12 @@ function import-aeObject {
         return
       }
 
-      if (! $identifiedPath) {       
+      if ($path) {
         Write-Debug -Message ('** Object will be imported to parametrized destination folder ' + $path)
         $identifiedPath = $path
+      }
+      else {
+        Write-Debug -Message ('** Object will be imported to destination folder specified by XML ' + $identifiedPath)
       }
       
       # If identifiedPath is empty, we can not safely import the object.
