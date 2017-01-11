@@ -262,7 +262,7 @@ function import-aeObject {
             [java.io.file]$xmlfile.fullname,
             $targetFolder,
             (! $noOverwrite),
-            $true
+            $false
           )
       
           $aeConnection.sendRequest($importRequest)
