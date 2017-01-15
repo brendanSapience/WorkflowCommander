@@ -10,8 +10,8 @@ Precondition:
 
 To install the modules:
 - Download / git clone this repository (you basically need the WorkflowCommander* folder contents).
-- Download the Automic AE GUI Client for AE V12 (for AE V10 you must download the AE V11.2 client).
-- Search for an "Automic.dll" file and copy it into the WorkflowCommander/lib directory
+- Get the automic.dll file from https://downloads.automic.com - it's part of the Automation.Engine image zip archive for your AE version (approx. 500MB). **V10 image file does not contain an automic.dll - download the one for V11.2 as it is downwards compatible**.
+- Copy the ApplicationInterface/automic.dll file to the WorkflowCommander/lib directory
 - Start a PowerShell session and move (or copy) the WorkflowCommander directories to the Powershell module folder to install it permanently OR for a temporary test use import-module on the folder:
 ```powershell
 move-item c:\temp\WorkflowCommander* $HOME\Documents\WindowsPowerShell\Modules
